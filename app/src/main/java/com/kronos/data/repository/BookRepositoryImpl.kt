@@ -28,6 +28,9 @@ class BookRepositoryImpl @Inject constructor(
     override fun getTrashedBooks(): Flow<List<Book>> =
         dao.observeTrash().map { list -> list.map { it.toDomain() } }
 
+    override fun searchBooks(query: String): Flow<List<Book>> =
+        dao.searchByTitleOrAuthor(query).map { list -> list.map { it.toDomain() } }
+
     override suspend fun getBookById(id: Long): Book? = withContext(ioDispatcher) {
         dao.getById(id)?.toDomain()
     }

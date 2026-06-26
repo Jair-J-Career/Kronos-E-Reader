@@ -26,6 +26,16 @@ interface BookDao {
     @Query("SELECT * FROM books WHERE is_in_trash = 0 AND title LIKE :query ORDER BY title ASC")
     fun search(query: String): Flow<List<BookEntity>>
 
+    @Query("""
+        SELECT DISTINCT b.* FROM books b
+        LEFT JOIN book_author_cross_ref bac ON b.id = bac.book_id
+        LEFT JOIN authors a ON bac.author_id = a.id
+        WHERE b.is_in_trash = 0
+        AND (b.title LIKE :query OR a.name LIKE :query)
+        ORDER BY b.title ASC
+    """)
+    fun searchByTitleOrAuthor(query: String): Flow<List<BookEntity>>
+
     @Query("SELECT * FROM books WHERE id = :id")
     suspend fun getById(id: Long): BookEntity?
 

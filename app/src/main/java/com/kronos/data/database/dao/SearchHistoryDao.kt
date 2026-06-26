@@ -19,6 +19,15 @@ interface SearchHistoryDao {
     @Query("DELETE FROM search_history WHERE id = :id")
     suspend fun deleteById(id: Long)
 
+    @Query("DELETE FROM search_history WHERE query = :query")
+    suspend fun deleteByQuery(query: String)
+
+    @androidx.room.Transaction
+    suspend fun upsert(item: SearchHistoryEntity) {
+        deleteByQuery(item.query)
+        insert(item)
+    }
+
     @Query("DELETE FROM search_history")
     suspend fun clearAll()
 }

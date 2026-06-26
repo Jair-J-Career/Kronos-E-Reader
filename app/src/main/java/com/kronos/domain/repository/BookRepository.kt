@@ -7,6 +7,7 @@ interface BookRepository {
     fun getAllBooks(): Flow<List<Book>>
     fun getFavoriteBooks(): Flow<List<Book>>
     fun getTrashedBooks(): Flow<List<Book>>
+    fun searchBooks(query: String): Flow<List<Book>>
     suspend fun getBookById(id: Long): Book?
     suspend fun addBook(book: Book): Long
     suspend fun updateBook(book: Book)
