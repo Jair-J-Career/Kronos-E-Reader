@@ -39,7 +39,7 @@ import com.kronos.data.database.entity.SeriesEntity
         NoteEntity::class,
         SearchHistoryEntity::class
     ],
-    version = 1,
+    version = 2,
     exportSchema = true
 )
 @TypeConverters(RoomTypeConverters::class)

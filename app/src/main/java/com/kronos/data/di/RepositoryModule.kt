@@ -4,12 +4,14 @@ import com.kronos.data.repository.BookmarkRepositoryImpl
 import com.kronos.data.repository.BookRepositoryImpl
 import com.kronos.data.repository.NoteRepositoryImpl
 import com.kronos.data.repository.QuoteRepositoryImpl
+import com.kronos.data.repository.ReadingProgressRepositoryImpl
 import com.kronos.data.repository.SearchHistoryRepositoryImpl
 import com.kronos.data.repository.ThemeRepositoryImpl
 import com.kronos.domain.repository.BookmarkRepository
 import com.kronos.domain.repository.BookRepository
 import com.kronos.domain.repository.NoteRepository
 import com.kronos.domain.repository.QuoteRepository
+import com.kronos.domain.repository.ReadingProgressRepository
 import com.kronos.domain.repository.SearchHistoryRepository
 import com.kronos.domain.repository.ThemeRepository
 import dagger.Binds
@@ -33,6 +35,9 @@ abstract class RepositoryModule {
 
     @Binds @Singleton
     abstract fun bindQuoteRepository(impl: QuoteRepositoryImpl): QuoteRepository
+
+    @Binds @Singleton
+    abstract fun bindReadingProgressRepository(impl: ReadingProgressRepositoryImpl): ReadingProgressRepository
 
     @Binds @Singleton
     abstract fun bindSearchHistoryRepository(impl: SearchHistoryRepositoryImpl): SearchHistoryRepository

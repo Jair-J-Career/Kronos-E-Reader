@@ -3,6 +3,7 @@ package com.kronos.data.di
 import android.content.Context
 import androidx.room.Room
 import com.kronos.common.IoDispatcher
+import com.kronos.data.database.DatabaseMigrations
 import com.kronos.data.database.KronosDatabase
 import com.kronos.data.database.dao.AuthorDao
 import com.kronos.data.database.dao.BookDao
@@ -29,7 +30,9 @@ object DatabaseModule {
     @Provides
     @Singleton
     fun provideKronosDatabase(@ApplicationContext context: Context): KronosDatabase =
-        Room.databaseBuilder(context, KronosDatabase::class.java, "kronos.db").build()
+        Room.databaseBuilder(context, KronosDatabase::class.java, "kronos.db")
+            .addMigrations(DatabaseMigrations.MIGRATION_1_2)
+            .build()
 
     @Provides @Singleton fun provideBookDao(db: KronosDatabase): BookDao = db.bookDao()
     @Provides @Singleton fun provideAuthorDao(db: KronosDatabase): AuthorDao = db.authorDao()

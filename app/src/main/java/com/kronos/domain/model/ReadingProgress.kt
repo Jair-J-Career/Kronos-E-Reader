@@ -8,5 +8,6 @@ data class ReadingProgress(
     val readPercentage: Double = 0.0,
     val startedAt: Long? = null,
     val completedAt: Long? = null,
-    val updatedAt: Long = System.currentTimeMillis()
+    val updatedAt: Long = System.currentTimeMillis(),
+    val isNightMode: Boolean = false
 )

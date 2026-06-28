@@ -6,6 +6,7 @@ import android.net.Uri
 import android.os.Build
 import android.provider.DocumentsContract
 import android.provider.MediaStore
+import android.provider.OpenableColumns
 import com.kronos.common.IoDispatcher
 import com.kronos.domain.model.Book
 import com.kronos.domain.source.PdfDocumentScanner
@@ -85,6 +86,27 @@ class PdfScanner @Inject constructor(
         val childrenUri = DocumentsContract.buildChildDocumentsUriUsingTree(treeUri, rootId)
         collectFromChildren(childrenUri, treeUri, results, System.currentTimeMillis(), depth = 0)
         results
+    }
+
+    override suspend fun scanFiles(fileUris: List<Uri>): List<Book> = withContext(ioDispatcher) {
+        val now = System.currentTimeMillis()
+        val projection = arrayOf(OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE)
+        fileUris.mapNotNull { uri ->
+            context.contentResolver.query(uri, projection, null, null, null)?.use { cursor ->
+                if (!cursor.moveToFirst()) return@use null
+                val rawName = cursor.getString(cursor.getColumnIndexOrThrow(OpenableColumns.DISPLAY_NAME))
+                    ?: return@use null
+                val size = cursor.getLong(cursor.getColumnIndexOrThrow(OpenableColumns.SIZE))
+                Book(
+                    title = rawName.substringBeforeLast('.').ifBlank { rawName },
+                    filePath = uri.toString(),
+                    fileUri = uri.toString(),
+                    fileSizeBytes = size,
+                    pageCount = 0,
+                    addedAt = now
+                )
+            }
+        }
     }
 
     private fun collectFromChildren(

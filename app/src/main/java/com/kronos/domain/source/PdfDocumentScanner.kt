@@ -6,4 +6,5 @@ import com.kronos.domain.model.Book
 interface PdfDocumentScanner {
     suspend fun scanDevice(): List<Book>
     suspend fun scanTree(treeUri: Uri): List<Book>
+    suspend fun scanFiles(fileUris: List<Uri>): List<Book>
 }

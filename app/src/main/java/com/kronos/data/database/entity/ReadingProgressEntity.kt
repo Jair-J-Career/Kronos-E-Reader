@@ -27,5 +27,6 @@ data class ReadingProgressEntity(
     @ColumnInfo(name = "read_percentage", defaultValue = "0.0") val readPercentage: Double = 0.0,
     @ColumnInfo(name = "started_at") val startedAt: Long? = null,
     @ColumnInfo(name = "completed_at") val completedAt: Long? = null,
-    @ColumnInfo(name = "updated_at") val updatedAt: Long
+    @ColumnInfo(name = "updated_at") val updatedAt: Long,
+    @ColumnInfo(name = "is_night_mode", defaultValue = "0") val isNightMode: Boolean = false
 )

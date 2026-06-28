@@ -3,7 +3,6 @@ package com.kronos.navigation
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
@@ -23,14 +22,13 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.kronos.feature.library.LibraryScreen
 import com.kronos.feature.reader.ReaderScreen
-import com.kronos.feature.search.SearchScreen
 import com.kronos.feature.settings.SettingsScreen
 
 @Composable
 fun KronosNavGraph(navController: NavHostController = rememberNavController()) {
     val currentEntry by navController.currentBackStackEntryAsState()
     val currentRoute = currentEntry?.destination?.route
-    val topLevelRoutes = setOf(NavRoutes.LIBRARY, NavRoutes.SEARCH, NavRoutes.SETTINGS)
+    val topLevelRoutes = setOf(NavRoutes.LIBRARY, NavRoutes.SETTINGS)
 
     Scaffold(
         bottomBar = {
@@ -46,9 +44,6 @@ fun KronosNavGraph(navController: NavHostController = rememberNavController()) {
         ) {
             composable(NavRoutes.LIBRARY) {
                 LibraryScreen(onBookClick = { navController.navigate(NavRoutes.reader(it)) })
-            }
-            composable(NavRoutes.SEARCH) {
-                SearchScreen(onBookClick = { navController.navigate(NavRoutes.reader(it)) })
             }
             composable(NavRoutes.SETTINGS) {
                 SettingsScreen()
@@ -77,18 +72,6 @@ private fun KronosBottomBar(navController: NavHostController, currentRoute: Stri
             },
             icon = { Icon(Icons.Default.Home, contentDescription = null) },
             label = { Text("Library") }
-        )
-        NavigationBarItem(
-            selected = currentRoute == NavRoutes.SEARCH,
-            onClick = {
-                navController.navigate(NavRoutes.SEARCH) {
-                    popUpTo(navController.graph.findStartDestination().id) { saveState = true }
-                    launchSingleTop = true
-                    restoreState = true
-                }
-            },
-            icon = { Icon(Icons.Default.Search, contentDescription = null) },
-            label = { Text("Search") }
         )
         NavigationBarItem(
             selected = currentRoute == NavRoutes.SETTINGS,

@@ -15,9 +15,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.Favorite
-import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.FormatQuote
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -95,7 +95,7 @@ fun ReaderOverlay(
                 ) {
                     IconButton(onClick = onBookmarkClick) {
                         Icon(
-                            imageVector = Icons.Default.Star,
+                            imageVector = Icons.Default.Bookmark,
                             contentDescription = "Bookmarks"
                         )
                     }
@@ -107,7 +107,7 @@ fun ReaderOverlay(
                     }
                     IconButton(onClick = onQuoteClick) {
                         Icon(
-                            imageVector = Icons.Default.Favorite,
+                            imageVector = Icons.Default.FormatQuote,
                             contentDescription = "Quotes"
                         )
                     }

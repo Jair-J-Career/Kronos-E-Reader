@@ -1,6 +1,7 @@
 package com.kronos.data.pdf
 
 import com.kronos.domain.model.PdfPageBitmapState
+import kotlin.math.abs
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
@@ -20,12 +21,19 @@ class PdfRenderWorker(
 ) {
     private val renderDispatcher = ioDispatcher.limitedParallelism(1)
     private var job: Job? = null
+    private var lastPage = -1
 
     fun start(currentPageFlow: StateFlow<Int>, scope: CoroutineScope) {
         job = scope.launch(renderDispatcher) {
             currentPageFlow.collectLatest { current ->
                 val total = session.pageCount
                 if (total <= 0) return@collectLatest
+                if (lastPage >= 0 && abs(current - lastPage) > HALF_WINDOW * 2) {
+                    pageStates.update { states ->
+                        states.filterKeys { abs(it - current) <= HALF_WINDOW }
+                    }
+                }
+                lastPage = current
                 cache.evictOutsideWindow(current, HALF_WINDOW)
                 renderWindow(current, total)
             }

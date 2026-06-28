@@ -1,7 +1,9 @@
 package com.kronos.feature.reader
 
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.runtime.Composable
@@ -10,7 +12,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.kronos.domain.model.Note
@@ -35,6 +40,7 @@ fun ReaderScreen(
     val pageStates by viewModel.pageStates.collectAsStateWithLifecycle()
     val notes by viewModel.notes.collectAsStateWithLifecycle()
     val quotes by viewModel.quotes.collectAsStateWithLifecycle()
+    val pageText by viewModel.pageText.collectAsStateWithLifecycle()
 
     when (val state = uiState) {
         is ReaderUiState.Loading -> LoadingIndicator()
@@ -47,8 +53,11 @@ fun ReaderScreen(
             pageStates = pageStates,
             notes = notes,
             quotes = quotes,
+            pageText = pageText,
             onPageChanged = viewModel::onPageChanged,
             onToggleOverlay = viewModel::onToggleOverlay,
+            onToggleNightMode = viewModel::onToggleNightMode,
+            onLoadPageText = viewModel::loadPageText,
             onNavigateBack = onNavigateBack,
             onAddBookmark = viewModel::onAddBookmark,
             onDeleteBookmark = viewModel::onDeleteBookmark,
@@ -67,8 +76,11 @@ private fun ReaderContent(
     pageStates: Map<Int, PdfPageBitmapState>,
     notes: List<Note>,
     quotes: List<Quote>,
+    pageText: String?,
     onPageChanged: (Int) -> Unit,
     onToggleOverlay: () -> Unit,
+    onToggleNightMode: () -> Unit,
+    onLoadPageText: () -> Unit,
     onNavigateBack: () -> Unit,
     onAddBookmark: () -> Unit,
     onDeleteBookmark: (Long) -> Unit,
@@ -79,6 +91,7 @@ private fun ReaderContent(
     onDeleteQuote: (Long) -> Unit
 ) {
     val pagerState = rememberPagerState(initialPage = state.currentPage) { state.totalPages }
+    val isNightMode = state.readingProgress.isNightMode
     var isZoomed by remember { mutableStateOf(false) }
     var openPanel by remember { mutableStateOf<ReaderPanel?>(null) }
     var jumpToPage by remember { mutableStateOf<Int?>(null) }
@@ -90,7 +103,8 @@ private fun ReaderContent(
 
     LaunchedEffect(jumpToPage) {
         jumpToPage?.let { page ->
-            pagerState.scrollToPage(page)
+            val target = page.coerceIn(0, (pagerState.pageCount - 1).coerceAtLeast(0))
+            pagerState.scrollToPage(target)
             jumpToPage = null
         }
     }
@@ -103,6 +117,9 @@ private fun ReaderContent(
         ) { pageIndex ->
             PdfPageView(
                 state = pageStates[pageIndex] ?: PdfPageBitmapState.Idle,
+                isNightMode = isNightMode,
+                isBookmarked = state.bookmarks.any { it.pageNumber == pageIndex },
+                hasQuote = quotes.any { it.pageNumber == pageIndex },
                 onIsZoomedChange = { isZoomed = it },
                 onTap = { if (!isZoomed) onToggleOverlay() },
                 modifier = Modifier.fillMaxSize()
@@ -118,6 +135,15 @@ private fun ReaderContent(
             onBookmarkClick = { openPanel = ReaderPanel.BOOKMARKS },
             onNoteClick = { openPanel = ReaderPanel.NOTES },
             onQuoteClick = { openPanel = ReaderPanel.QUOTES }
+        )
+
+        Box(
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .size(100.dp)
+                .pointerInput(onToggleNightMode) {
+                    detectTapGestures(onTap = { onToggleNightMode() })
+                }
         )
     }
 
@@ -140,6 +166,8 @@ private fun ReaderContent(
         ReaderPanel.QUOTES -> QuotePanel(
             quotes = quotes,
             currentPage = state.currentPage,
+            pageText = pageText,
+            onLoadPageText = onLoadPageText,
             onDismiss = { openPanel = null },
             onAddQuote = onAddQuote,
             onDeleteQuote = onDeleteQuote

@@ -25,6 +25,9 @@ import com.kronos.domain.usecase.note.UpdateNoteUseCase
 import com.kronos.domain.usecase.quote.AddQuoteUseCase
 import com.kronos.domain.usecase.quote.DeleteQuoteUseCase
 import com.kronos.domain.usecase.quote.GetQuotesForBookUseCase
+import com.kronos.domain.source.TextExtractionSource
+import com.kronos.domain.usecase.readingprogress.GetReadingProgressUseCase
+import com.kronos.domain.usecase.readingprogress.UpsertReadingProgressUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineDispatcher
@@ -39,6 +42,8 @@ import javax.inject.Inject
 class ReaderViewModel @Inject constructor(
     private val session: PdfDocumentSession,
     private val getBookById: GetBookByIdUseCase,
+    private val getReadingProgress: GetReadingProgressUseCase,
+    private val upsertReadingProgress: UpsertReadingProgressUseCase,
     private val getBookmarksForBook: GetBookmarksForBookUseCase,
     private val addBookmarkUseCase: AddBookmarkUseCase,
     private val deleteBookmarkUseCase: DeleteBookmarkUseCase,
@@ -49,6 +54,7 @@ class ReaderViewModel @Inject constructor(
     private val getQuotesForBook: GetQuotesForBookUseCase,
     private val addQuoteUseCase: AddQuoteUseCase,
     private val deleteQuoteUseCase: DeleteQuoteUseCase,
+    private val textExtractionSource: TextExtractionSource,
     savedStateHandle: SavedStateHandle,
     @ApplicationContext private val appContext: Context,
     @IoDispatcher private val ioDispatcher: CoroutineDispatcher
@@ -67,6 +73,9 @@ class ReaderViewModel @Inject constructor(
 
     private val _quotes = MutableStateFlow<List<Quote>>(emptyList())
     val quotes: StateFlow<List<Quote>> = _quotes.asStateFlow()
+
+    private val _pageText = MutableStateFlow<String?>(null)
+    val pageText: StateFlow<String?> = _pageText.asStateFlow()
 
     private val currentPageFlow = MutableStateFlow(0)
     private val cache = PdfPageCache()
@@ -96,11 +105,13 @@ class ReaderViewModel @Inject constructor(
                     _uiState.value = ReaderUiState.Error("Could not read PDF pages")
                     return@launch
                 }
+                val progress = getReadingProgress(bookId)
+                    ?: ReadingProgress(bookId = bookId, status = ReadingStatus.READING)
                 _uiState.value = ReaderUiState.Success(
                     book = book,
                     totalPages = totalPages,
                     currentPage = 0,
-                    readingProgress = ReadingProgress(bookId = bookId, status = ReadingStatus.READING),
+                    readingProgress = progress,
                     bookmarks = emptyList(),
                     isOverlayVisible = false
                 )
@@ -138,6 +149,24 @@ class ReaderViewModel @Inject constructor(
     fun onToggleOverlay() {
         _uiState.update { state ->
             if (state is ReaderUiState.Success) state.copy(isOverlayVisible = !state.isOverlayVisible) else state
+        }
+    }
+
+    fun onToggleNightMode() {
+        _uiState.update { state ->
+            if (state is ReaderUiState.Success) {
+                val updated = state.readingProgress.copy(isNightMode = !state.readingProgress.isNightMode)
+                viewModelScope.launch(ioDispatcher) { upsertReadingProgress(updated) }
+                state.copy(readingProgress = updated)
+            } else state
+        }
+    }
+
+    fun loadPageText() {
+        val page = (_uiState.value as? ReaderUiState.Success)?.currentPage ?: return
+        _pageText.value = null
+        viewModelScope.launch(ioDispatcher) {
+            _pageText.value = textExtractionSource.extractPageText(bookId, page)
         }
     }
 
