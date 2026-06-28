@@ -8,14 +8,18 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Scaffold
@@ -36,20 +40,23 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.kronos.feature.library.component.BookGrid
+import com.kronos.feature.library.component.BookListItem
 import com.kronos.ui.component.EmptyState
 import com.kronos.ui.component.LoadingIndicator
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LibraryScreen(
-    onBookClick: (Long) -> Unit,
+    onBookCoverClick: (Long) -> Unit,
+    onBookTitleClick: (Long) -> Unit,
+    onBookProgressClick: (Long) -> Unit,
+    onOpenDrawer: () -> Unit,
     viewModel: LibraryViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val searchQuery by viewModel.searchQuery.collectAsStateWithLifecycle()
     var isSearchActive by remember { mutableStateOf(false) }
-    var showAddMenu by remember { mutableStateOf(false) }
+    var showOverflowMenu by remember { mutableStateOf(false) }
     val focusRequester = remember { FocusRequester() }
 
     val folderPickerLauncher = rememberLauncherForActivityResult(
@@ -105,32 +112,51 @@ fun LibraryScreen(
                 )
             } else {
                 TopAppBar(
+                    navigationIcon = {
+                        IconButton(onClick = onOpenDrawer) {
+                            Icon(Icons.Default.Menu, contentDescription = "Open menu")
+                        }
+                    },
                     title = { Text("My Library") },
                     actions = {
                         IconButton(onClick = { isSearchActive = true }) {
                             Icon(Icons.Default.Search, contentDescription = "Search")
                         }
                         Box {
-                            IconButton(onClick = { showAddMenu = true }) {
+                            IconButton(onClick = { showOverflowMenu = true }) {
                                 Icon(Icons.Default.MoreVert, contentDescription = "More options")
                             }
                             DropdownMenu(
-                                expanded = showAddMenu,
-                                onDismissRequest = { showAddMenu = false }
+                                expanded = showOverflowMenu,
+                                onDismissRequest = { showOverflowMenu = false }
                             ) {
                                 DropdownMenuItem(
-                                    text = { Text("Scan Folder") },
+                                    text = { Text("Open Single File") },
                                     onClick = {
-                                        showAddMenu = false
-                                        viewModel.onGrantFolderAccess()
+                                        showOverflowMenu = false
+                                        viewModel.onGrantFileAccess()
                                     }
                                 )
                                 DropdownMenuItem(
-                                    text = { Text("Add Specific Books") },
+                                    text = { Text("Open Folder") },
                                     onClick = {
-                                        showAddMenu = false
-                                        viewModel.onGrantFileAccess()
+                                        showOverflowMenu = false
+                                        viewModel.onGrantFolderAccess()
                                     }
+                                )
+                                HorizontalDivider()
+                                DropdownMenuItem(
+                                    text = { Text("Sort By  ›") },
+                                    onClick = { showOverflowMenu = false }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("View  ›") },
+                                    onClick = { showOverflowMenu = false }
+                                )
+                                HorizontalDivider()
+                                DropdownMenuItem(
+                                    text = { Text("Share App") },
+                                    onClick = { showOverflowMenu = false }
                                 )
                             }
                         }
@@ -165,13 +191,24 @@ fun LibraryScreen(
                         subtitle = "No books match \"$searchQuery\"",
                         modifier = Modifier.padding(paddingValues)
                     )
-                    else -> BookGrid(
-                        books = state.books,
-                        onBookClick = { book -> onBookClick(book.id) },
+                    else -> LazyColumn(
                         modifier = Modifier
                             .fillMaxSize()
                             .padding(paddingValues)
-                    )
+                    ) {
+                        itemsIndexed(state.books, key = { _, book -> book.id }) { index, book ->
+                            BookListItem(
+                                book = book,
+                                readPercentage = 0f,
+                                onCoverClick = { onBookCoverClick(book.id) },
+                                onTitleClick = { onBookTitleClick(book.id) },
+                                onProgressClick = { onBookProgressClick(book.id) }
+                            )
+                            if (index < state.books.lastIndex) {
+                                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+                            }
+                        }
+                    }
                 }
             }
             is LibraryUiState.Error -> {
