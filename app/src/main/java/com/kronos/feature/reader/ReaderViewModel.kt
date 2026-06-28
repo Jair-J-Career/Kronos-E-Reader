@@ -31,6 +31,8 @@ import com.kronos.domain.usecase.readingprogress.UpsertReadingProgressUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -107,18 +109,47 @@ class ReaderViewModel @Inject constructor(
                 }
                 val progress = getReadingProgress(bookId)
                     ?: ReadingProgress(bookId = bookId, status = ReadingStatus.READING)
+                currentPageFlow.value = progress.currentPage
                 _uiState.value = ReaderUiState.Success(
                     book = book,
                     totalPages = totalPages,
-                    currentPage = 0,
+                    currentPage = progress.currentPage,
                     readingProgress = progress,
                     bookmarks = emptyList(),
                     isOverlayVisible = false
                 )
                 worker.start(currentPageFlow, viewModelScope)
                 observeAnnotations()
+                observePageProgress()
             } catch (e: Exception) {
                 _uiState.value = ReaderUiState.Error(e.message ?: "Failed to open book")
+            }
+        }
+    }
+
+    private fun observePageProgress() {
+        var saveJob: Job? = null
+        viewModelScope.launch {
+            currentPageFlow.collect { page ->
+                saveJob?.cancel()
+                saveJob = viewModelScope.launch(ioDispatcher) {
+                    delay(500L)
+                    val state = _uiState.value as? ReaderUiState.Success ?: return@launch
+                    val totalPages = state.totalPages
+                    val readPct = if (totalPages > 0) (page + 1).toDouble() / totalPages * 100.0 else 0.0
+                    val now = System.currentTimeMillis()
+                    val updated = state.readingProgress.copy(
+                        currentPage = page,
+                        readPercentage = readPct,
+                        status = ReadingStatus.READING,
+                        startedAt = state.readingProgress.startedAt ?: now,
+                        updatedAt = now
+                    )
+                    upsertReadingProgress(updated)
+                    _uiState.update { s ->
+                        if (s is ReaderUiState.Success) s.copy(readingProgress = updated) else s
+                    }
+                }
             }
         }
     }

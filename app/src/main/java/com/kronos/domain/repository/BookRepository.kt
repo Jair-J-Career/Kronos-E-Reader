@@ -1,10 +1,15 @@
 package com.kronos.domain.repository
 
 import com.kronos.domain.model.Book
+import com.kronos.domain.model.BookAnnotationSummary
+import com.kronos.domain.model.ReadingStatus
+import com.kronos.domain.model.SortMode
 import kotlinx.coroutines.flow.Flow
 
 interface BookRepository {
-    fun getAllBooks(): Flow<List<Book>>
+    fun getAllBooks(sort: SortMode): Flow<List<Book>>
+    fun observeBooksWithAnnotations(): Flow<List<BookAnnotationSummary>>
+    fun getBooksByStatus(status: ReadingStatus, sort: SortMode): Flow<List<Book>>
     fun getFavoriteBooks(): Flow<List<Book>>
     fun getTrashedBooks(): Flow<List<Book>>
     fun searchBooks(query: String): Flow<List<Book>>
@@ -14,5 +19,6 @@ interface BookRepository {
     suspend fun moveToTrash(id: Long)
     suspend fun restoreFromTrash(id: Long)
     suspend fun permanentlyDelete(id: Long)
+    suspend fun deleteAllTrashed()
     suspend fun toggleFavorite(id: Long)
 }

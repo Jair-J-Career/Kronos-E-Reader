@@ -12,6 +12,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
@@ -42,31 +46,37 @@ fun ReaderScreen(
     val quotes by viewModel.quotes.collectAsStateWithLifecycle()
     val pageText by viewModel.pageText.collectAsStateWithLifecycle()
 
-    when (val state = uiState) {
-        is ReaderUiState.Loading -> LoadingIndicator()
-        is ReaderUiState.Error -> EmptyState(
-            title = "Cannot open book",
-            subtitle = state.message
-        )
-        is ReaderUiState.Success -> ReaderContent(
-            state = state,
-            pageStates = pageStates,
-            notes = notes,
-            quotes = quotes,
-            pageText = pageText,
-            onPageChanged = viewModel::onPageChanged,
-            onToggleOverlay = viewModel::onToggleOverlay,
-            onToggleNightMode = viewModel::onToggleNightMode,
-            onLoadPageText = viewModel::loadPageText,
-            onNavigateBack = onNavigateBack,
-            onAddBookmark = viewModel::onAddBookmark,
-            onDeleteBookmark = viewModel::onDeleteBookmark,
-            onAddNote = viewModel::onAddNote,
-            onUpdateNote = viewModel::onUpdateNote,
-            onDeleteNote = viewModel::onDeleteNote,
-            onAddQuote = viewModel::onAddQuote,
-            onDeleteQuote = viewModel::onDeleteQuote
-        )
+    Surface(
+        modifier = Modifier.fillMaxSize(),
+        color = MaterialTheme.colorScheme.background
+    ) {
+        when (val state = uiState) {
+            is ReaderUiState.Loading -> LoadingIndicator()
+            is ReaderUiState.Error -> EmptyState(
+                title = "Cannot open book",
+                subtitle = state.message,
+                action = { TextButton(onClick = onNavigateBack) { Text("Go Back") } }
+            )
+            is ReaderUiState.Success -> ReaderContent(
+                state = state,
+                pageStates = pageStates,
+                notes = notes,
+                quotes = quotes,
+                pageText = pageText,
+                onPageChanged = viewModel::onPageChanged,
+                onToggleOverlay = viewModel::onToggleOverlay,
+                onToggleNightMode = viewModel::onToggleNightMode,
+                onLoadPageText = viewModel::loadPageText,
+                onNavigateBack = onNavigateBack,
+                onAddBookmark = viewModel::onAddBookmark,
+                onDeleteBookmark = viewModel::onDeleteBookmark,
+                onAddNote = viewModel::onAddNote,
+                onUpdateNote = viewModel::onUpdateNote,
+                onDeleteNote = viewModel::onDeleteNote,
+                onAddQuote = viewModel::onAddQuote,
+                onDeleteQuote = viewModel::onDeleteQuote
+            )
+        }
     }
 }
 

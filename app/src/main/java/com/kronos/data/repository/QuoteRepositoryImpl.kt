@@ -3,6 +3,7 @@ package com.kronos.data.repository
 import com.kronos.data.database.dao.QuoteDao
 import com.kronos.data.database.entity.QuoteEntity
 import com.kronos.domain.model.Quote
+import com.kronos.domain.model.QuoteSummary
 import com.kronos.domain.repository.QuoteRepository
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -13,6 +14,11 @@ import javax.inject.Singleton
 class QuoteRepositoryImpl @Inject constructor(
     private val dao: QuoteDao
 ) : QuoteRepository {
+
+    override fun getAllQuotes(): Flow<List<QuoteSummary>> =
+        dao.observeAllWithBookTitle().map { list ->
+            list.map { QuoteSummary(id = it.id, bookId = it.bookId, bookTitle = it.bookTitle, text = it.text, createdAt = it.createdAt) }
+        }
 
     override fun getQuotesForBook(bookId: Long): Flow<List<Quote>> =
         dao.observeByBookId(bookId).map { entities -> entities.map { it.toDomain() } }

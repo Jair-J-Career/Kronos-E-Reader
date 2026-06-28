@@ -7,9 +7,14 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.kronos.common.IoDispatcher
 import com.kronos.domain.model.Book
+import com.kronos.domain.model.ReadingStatus
+import com.kronos.domain.model.SortMode
+import com.kronos.domain.model.ViewMode
 import com.kronos.domain.usecase.book.AddSpecificFilesUseCase
 import com.kronos.domain.usecase.book.GetAllBooksUseCase
+import com.kronos.domain.usecase.book.GetBooksByStatusUseCase
 import com.kronos.domain.usecase.book.ScanFolderUseCase
+import com.kronos.domain.usecase.readingprogress.ObserveAllReadingProgressUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineDispatcher
@@ -21,6 +26,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -28,9 +35,11 @@ import javax.inject.Inject
 
 @HiltViewModel
 class LibraryViewModel @Inject constructor(
-    getAllBooksUseCase: GetAllBooksUseCase,
+    private val getAllBooksUseCase: GetAllBooksUseCase,
+    private val getBooksByStatusUseCase: GetBooksByStatusUseCase,
     private val scanFolderUseCase: ScanFolderUseCase,
     private val addSpecificFilesUseCase: AddSpecificFilesUseCase,
+    private val observeAllProgress: ObserveAllReadingProgressUseCase,
     @ApplicationContext private val appContext: Context,
     @IoDispatcher private val ioDispatcher: CoroutineDispatcher
 ) : ViewModel() {
@@ -41,14 +50,27 @@ class LibraryViewModel @Inject constructor(
     private val _searchQuery = MutableStateFlow("")
     val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
 
+    private val _viewMode = MutableStateFlow(ViewMode.COMPLETE)
+    private val _sortMode = MutableStateFlow(SortMode.RECENT)
+    private val _statusFilter = MutableStateFlow<ReadingStatus?>(null)
+
+    private val booksFlow: Flow<List<Book>> = combine(_sortMode, _statusFilter) { sort, status ->
+        sort to status
+    }.flatMapLatest { (sort, status) ->
+        if (status == null) getAllBooksUseCase(sort)
+        else getBooksByStatusUseCase(status, sort)
+    }
+
     val uiState: StateFlow<LibraryUiState> = combine(
-        getAllBooksUseCase(),
-        _searchQuery
-    ) { books: List<Book>, query: String ->
+        booksFlow,
+        _searchQuery,
+        _viewMode,
+        _sortMode
+    ) { books, query, viewMode, sortMode ->
         val filtered = if (query.isBlank()) books else books.filter {
             it.title.contains(query, ignoreCase = true)
         }
-        LibraryUiState.Success(filtered) as LibraryUiState
+        LibraryUiState.Success(filtered, viewMode, sortMode) as LibraryUiState
     }
         .catch { e -> emit(LibraryUiState.Error(e.message ?: "Unexpected error")) }
         .stateIn(
@@ -57,9 +79,23 @@ class LibraryViewModel @Inject constructor(
             initialValue = LibraryUiState.Loading
         )
 
-    fun onSearchQueryChange(query: String) {
-        _searchQuery.value = query
-    }
+    val progressMap: StateFlow<Map<Long, Float>> = observeAllProgress()
+        .map { list ->
+            list.associate { p ->
+                val fraction = when (p.status) {
+                    ReadingStatus.HAVE_READ -> 1.0f
+                    ReadingStatus.READING -> (p.readPercentage / 100.0).toFloat().coerceIn(0f, 1f)
+                    ReadingStatus.TO_READ -> 0.0f
+                }
+                p.bookId to fraction
+            }
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
+
+    fun onSearchQueryChange(query: String) { _searchQuery.value = query }
+    fun onViewModeChange(mode: ViewMode) { _viewMode.value = mode }
+    fun onSortModeChange(mode: SortMode) { _sortMode.value = mode }
+    fun onStatusFilterChange(status: ReadingStatus?) { _statusFilter.value = status }
 
     fun onGrantFolderAccess() {
         viewModelScope.launch { _events.send(LibraryEvent.OpenFolderPicker) }

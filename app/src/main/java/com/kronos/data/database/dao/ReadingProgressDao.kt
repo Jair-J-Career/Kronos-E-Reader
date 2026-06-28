@@ -23,6 +23,9 @@ interface ReadingProgressDao {
     @Update
     suspend fun update(progress: ReadingProgressEntity)
 
+    @Query("SELECT * FROM reading_progress")
+    fun observeAll(): Flow<List<ReadingProgressEntity>>
+
     @Query("DELETE FROM reading_progress WHERE book_id = :bookId")
     suspend fun deleteByBookId(bookId: Long)
 }

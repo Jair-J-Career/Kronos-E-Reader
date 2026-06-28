@@ -2,6 +2,7 @@ package com.kronos.data.di
 
 import com.kronos.data.repository.BookmarkRepositoryImpl
 import com.kronos.data.repository.BookRepositoryImpl
+import com.kronos.data.repository.CollectionRepositoryImpl
 import com.kronos.data.repository.NoteRepositoryImpl
 import com.kronos.data.repository.QuoteRepositoryImpl
 import com.kronos.data.repository.ReadingProgressRepositoryImpl
@@ -9,6 +10,7 @@ import com.kronos.data.repository.SearchHistoryRepositoryImpl
 import com.kronos.data.repository.ThemeRepositoryImpl
 import com.kronos.domain.repository.BookmarkRepository
 import com.kronos.domain.repository.BookRepository
+import com.kronos.domain.repository.CollectionRepository
 import com.kronos.domain.repository.NoteRepository
 import com.kronos.domain.repository.QuoteRepository
 import com.kronos.domain.repository.ReadingProgressRepository
@@ -44,4 +46,7 @@ abstract class RepositoryModule {
 
     @Binds @Singleton
     abstract fun bindThemeRepository(impl: ThemeRepositoryImpl): ThemeRepository
+
+    @Binds @Singleton
+    abstract fun bindCollectionRepository(impl: CollectionRepositoryImpl): CollectionRepository
 }

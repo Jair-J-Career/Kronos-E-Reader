@@ -36,6 +36,9 @@ interface CollectionDao {
     @Delete
     suspend fun delete(collection: CollectionEntity)
 
+    @Query("SELECT collection_id FROM book_collection_cross_ref WHERE book_id = :bookId")
+    fun observeCollectionIdsForBook(bookId: Long): Flow<List<Long>>
+
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertCrossRef(crossRef: BookCollectionCrossRef)
 

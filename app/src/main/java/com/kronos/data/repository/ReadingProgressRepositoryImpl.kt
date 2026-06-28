@@ -6,6 +6,8 @@ import com.kronos.data.database.entity.ReadingProgressEntity
 import com.kronos.domain.model.ReadingProgress
 import com.kronos.domain.repository.ReadingProgressRepository
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -15,6 +17,12 @@ class ReadingProgressRepositoryImpl @Inject constructor(
     private val dao: ReadingProgressDao,
     @IoDispatcher private val ioDispatcher: CoroutineDispatcher
 ) : ReadingProgressRepository {
+
+    override fun observeByBookId(bookId: Long): Flow<ReadingProgress?> =
+        dao.observeByBookId(bookId).map { it?.toDomain() }
+
+    override fun observeAll(): Flow<List<ReadingProgress>> =
+        dao.observeAll().map { list -> list.map { it.toDomain() } }
 
     override suspend fun getByBookId(bookId: Long): ReadingProgress? =
         withContext(ioDispatcher) { dao.getByBookId(bookId)?.toDomain() }

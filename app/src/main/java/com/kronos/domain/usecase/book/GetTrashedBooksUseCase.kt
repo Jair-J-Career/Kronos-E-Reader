@@ -1,0 +1,10 @@
+package com.kronos.domain.usecase.book
+
+import com.kronos.domain.model.Book
+import com.kronos.domain.repository.BookRepository
+import kotlinx.coroutines.flow.Flow
+import javax.inject.Inject
+
+class GetTrashedBooksUseCase @Inject constructor(private val repository: BookRepository) {
+    operator fun invoke(): Flow<List<Book>> = repository.getTrashedBooks()
+}

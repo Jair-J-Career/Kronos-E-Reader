@@ -15,6 +15,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -57,7 +58,8 @@ fun ProgressDetailScreen(
             is ProgressUiState.Error -> EmptyState(
                 title = "Error",
                 subtitle = state.message,
-                modifier = Modifier.padding(paddingValues)
+                modifier = Modifier.padding(paddingValues),
+                action = { TextButton(onClick = onNavigateBack) { Text("Go Back") } }
             )
             is ProgressUiState.Success -> ProgressContent(
                 state = state,
