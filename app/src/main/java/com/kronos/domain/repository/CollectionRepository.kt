@@ -12,4 +12,6 @@ interface CollectionRepository {
     suspend fun createCollection(name: String): Long
     suspend fun addBookToCollection(bookId: Long, collectionId: Long)
     suspend fun removeBookFromCollection(bookId: Long, collectionId: Long)
+    fun observeBookCountsPerCollection(): Flow<Map<Long, Int>>
+    fun observeCollectionCovers(): Flow<Map<Long, List<String>>>
 }

@@ -1,6 +1,8 @@
 package com.kronos.data.repository
 
 import com.kronos.common.IoDispatcher
+import com.kronos.data.database.dao.CollectionCountRow
+import com.kronos.data.database.dao.CollectionCoverRow
 import com.kronos.data.database.dao.CollectionDao
 import com.kronos.data.database.entity.BookCollectionCrossRef
 import com.kronos.data.database.entity.BookEntity
@@ -46,6 +48,15 @@ class CollectionRepositoryImpl @Inject constructor(
     override suspend fun removeBookFromCollection(bookId: Long, collectionId: Long) = withContext(ioDispatcher) {
         dao.deleteCrossRef(BookCollectionCrossRef(bookId, collectionId, 0L))
     }
+
+    override fun observeBookCountsPerCollection(): Flow<Map<Long, Int>> =
+        dao.observeBookCountsPerCollection().map { rows -> rows.associate { it.collectionId to it.count } }
+
+    override fun observeCollectionCovers(): Flow<Map<Long, List<String>>> =
+        dao.observeCollectionCovers().map { rows ->
+            rows.groupBy { it.collectionId }
+                .mapValues { (_, v) -> v.map { it.coverImagePath }.take(4) }
+        }
 }
 
 private fun CollectionEntity.toDomain() = Collection(

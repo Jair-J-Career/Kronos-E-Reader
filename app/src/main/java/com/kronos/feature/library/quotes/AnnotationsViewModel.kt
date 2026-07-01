@@ -9,6 +9,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import javax.inject.Inject
@@ -31,7 +32,9 @@ class AnnotationsViewModel @Inject constructor(
             AnnotationSort.RECENT -> books.sortedByDescending { it.latestAnnotationAt }
             AnnotationSort.MOST -> books.sortedByDescending { it.quoteCount + it.noteCount }
         }
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+    }
+        .catch { emit(emptyList()) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     fun toggleSort() {
         _sort.value = if (_sort.value == AnnotationSort.RECENT) AnnotationSort.MOST else AnnotationSort.RECENT

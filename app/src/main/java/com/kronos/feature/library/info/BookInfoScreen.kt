@@ -13,7 +13,9 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -22,13 +24,15 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Collections
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.outlined.StarBorder
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -117,7 +121,8 @@ fun BookInfoScreen(
                     }
                     context.startActivity(Intent.createChooser(intent, null))
                 },
-                onMoveToTrash = viewModel::onMoveToTrash
+                onMoveToTrash = viewModel::onMoveToTrash,
+                onSaveReview = viewModel::onSaveReview
             )
         }
     }
@@ -133,11 +138,15 @@ private fun BookInfoContent(
     onCollectionToggle: (Long, Boolean) -> Unit,
     onCreateCollection: (String) -> Unit,
     onShare: () -> Unit,
-    onMoveToTrash: () -> Unit
+    onMoveToTrash: () -> Unit,
+    onSaveReview: (Int?, String?) -> Unit
 ) {
     var showCollectionsSheet by remember { mutableStateOf(false) }
-    val sheetState = rememberModalBottomSheetState()
+    var showReviewSheet by remember { mutableStateOf(false) }
+    val collectionsSheetState = rememberModalBottomSheetState()
+    val reviewSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val currentStatus = state.progress?.status ?: ReadingStatus.READING
+    val hasReview = state.progress?.rating != null || !state.progress?.review.isNullOrBlank()
 
     Scaffold(
         topBar = {
@@ -157,8 +166,11 @@ private fun BookInfoContent(
             )
         },
         floatingActionButton = {
-            FloatingActionButton(onClick = {}) {
-                Icon(Icons.Default.Edit, contentDescription = "Edit")
+            FloatingActionButton(onClick = { showReviewSheet = true }) {
+                Icon(
+                    imageVector = if (hasReview) Icons.Filled.Star else Icons.Outlined.StarBorder,
+                    contentDescription = "Rate & Review"
+                )
             }
         }
     ) { paddingValues ->
@@ -252,6 +264,21 @@ private fun BookInfoContent(
                 )
             }
 
+            if (hasReview) {
+                Spacer(Modifier.height(12.dp))
+                MetadataCard {
+                    if (state.progress?.rating != null) {
+                        MetadataRow(label = "Rating", value = "${state.progress.rating} / 10")
+                    }
+                    if (!state.progress?.review.isNullOrBlank()) {
+                        if (state.progress?.rating != null) {
+                            HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+                        }
+                        MetadataRow(label = "Review", value = state.progress?.review ?: "")
+                    }
+                }
+            }
+
             Spacer(Modifier.height(12.dp))
 
             MetadataCard {
@@ -280,11 +307,107 @@ private fun BookInfoContent(
         CollectionsBottomSheet(
             collections = state.collections,
             bookCollectionIds = state.bookCollectionIds,
-            sheetState = sheetState,
+            sheetState = collectionsSheetState,
             onDismiss = { showCollectionsSheet = false },
             onToggle = onCollectionToggle,
             onCreateCollection = onCreateCollection
         )
+    }
+
+    if (showReviewSheet) {
+        ReviewBottomSheet(
+            currentRating = state.progress?.rating,
+            currentReview = state.progress?.review,
+            sheetState = reviewSheetState,
+            onDismiss = { showReviewSheet = false },
+            onSave = { rating, review ->
+                onSaveReview(rating, review)
+                showReviewSheet = false
+            }
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ReviewBottomSheet(
+    currentRating: Int?,
+    currentReview: String?,
+    sheetState: androidx.compose.material3.SheetState,
+    onDismiss: () -> Unit,
+    onSave: (Int?, String?) -> Unit
+) {
+    var selectedRating by remember { mutableStateOf(currentRating) }
+    var reviewText by remember { mutableStateOf(currentReview ?: "") }
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .imePadding()
+                .padding(horizontal = 16.dp)
+                .padding(bottom = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            Text(
+                text = "Rate & Review",
+                style = MaterialTheme.typography.titleMedium
+            )
+
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    text = if (selectedRating != null) "Rating: $selectedRating / 10" else "Rating",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                RatingSelector(
+                    selected = selectedRating,
+                    onSelect = { n -> selectedRating = if (selectedRating == n) null else n }
+                )
+            }
+
+            OutlinedTextField(
+                value = reviewText,
+                onValueChange = { reviewText = it },
+                label = { Text("Your review") },
+                minLines = 4,
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            Button(
+                onClick = { onSave(selectedRating, reviewText.takeIf { it.isNotBlank() }) },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Save")
+            }
+        }
+    }
+}
+
+@Composable
+private fun RatingSelector(selected: Int?, onSelect: (Int) -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceEvenly
+    ) {
+        for (i in 1..10) {
+            val filled = i <= (selected ?: 0)
+            Icon(
+                imageVector = if (filled) Icons.Filled.Star else Icons.Outlined.StarBorder,
+                contentDescription = null,
+                tint = if (filled)
+                    MaterialTheme.colorScheme.primary
+                else
+                    MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier
+                    .size(28.dp)
+                    .clickable { onSelect(i) }
+            )
+        }
     }
 }
 

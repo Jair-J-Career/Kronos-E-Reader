@@ -31,7 +31,7 @@ object DatabaseModule {
     @Singleton
     fun provideKronosDatabase(@ApplicationContext context: Context): KronosDatabase =
         Room.databaseBuilder(context, KronosDatabase::class.java, "kronos.db")
-            .addMigrations(DatabaseMigrations.MIGRATION_1_2)
+            .addMigrations(DatabaseMigrations.MIGRATION_1_2, DatabaseMigrations.MIGRATION_2_3)
             .build()
 
     @Provides @Singleton fun provideBookDao(db: KronosDatabase): BookDao = db.bookDao()

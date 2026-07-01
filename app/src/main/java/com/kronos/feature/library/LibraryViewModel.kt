@@ -3,6 +3,7 @@ package com.kronos.feature.library
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.kronos.common.IoDispatcher
@@ -30,6 +31,7 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -41,7 +43,8 @@ class LibraryViewModel @Inject constructor(
     private val addSpecificFilesUseCase: AddSpecificFilesUseCase,
     private val observeAllProgress: ObserveAllReadingProgressUseCase,
     @ApplicationContext private val appContext: Context,
-    @IoDispatcher private val ioDispatcher: CoroutineDispatcher
+    @IoDispatcher private val ioDispatcher: CoroutineDispatcher,
+    private val savedStateHandle: SavedStateHandle
 ) : ViewModel() {
 
     private val _events = Channel<LibraryEvent>(Channel.BUFFERED)
@@ -50,23 +53,28 @@ class LibraryViewModel @Inject constructor(
     private val _searchQuery = MutableStateFlow("")
     val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
 
-    private val _viewMode = MutableStateFlow(ViewMode.COMPLETE)
-    private val _sortMode = MutableStateFlow(SortMode.RECENT)
+    private val _viewModes = MutableStateFlow(restoreViewModes())
+    private val _sortModes = MutableStateFlow(restoreSortModes())
     private val _statusFilter = MutableStateFlow<ReadingStatus?>(null)
 
-    private val booksFlow: Flow<List<Book>> = combine(_sortMode, _statusFilter) { sort, status ->
-        sort to status
+    private val booksFlow: StateFlow<List<Book>> = combine(_sortModes, _statusFilter) { sortModes, status ->
+        (sortModes[status] ?: SortMode.RECENT) to status
     }.flatMapLatest { (sort, status) ->
         if (status == null) getAllBooksUseCase(sort)
         else getBooksByStatusUseCase(status, sort)
     }
+        .catch { emit(emptyList()) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     val uiState: StateFlow<LibraryUiState> = combine(
         booksFlow,
         _searchQuery,
-        _viewMode,
-        _sortMode
-    ) { books, query, viewMode, sortMode ->
+        _viewModes,
+        _sortModes,
+        _statusFilter
+    ) { books, query, viewModes, sortModes, status ->
+        val viewMode = viewModes[status] ?: ViewMode.COMPLETE
+        val sortMode = sortModes[status] ?: SortMode.RECENT
         val filtered = if (query.isBlank()) books else books.filter {
             it.title.contains(query, ignoreCase = true)
         }
@@ -82,19 +90,26 @@ class LibraryViewModel @Inject constructor(
     val progressMap: StateFlow<Map<Long, Float>> = observeAllProgress()
         .map { list ->
             list.associate { p ->
-                val fraction = when (p.status) {
-                    ReadingStatus.HAVE_READ -> 1.0f
-                    ReadingStatus.READING -> (p.readPercentage / 100.0).toFloat().coerceIn(0f, 1f)
-                    ReadingStatus.TO_READ -> 0.0f
-                }
-                p.bookId to fraction
+                p.bookId to (p.readPercentage / 100.0).toFloat().coerceIn(0f, 1f)
             }
         }
+        .catch { emit(emptyMap()) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
 
     fun onSearchQueryChange(query: String) { _searchQuery.value = query }
-    fun onViewModeChange(mode: ViewMode) { _viewMode.value = mode }
-    fun onSortModeChange(mode: SortMode) { _sortMode.value = mode }
+
+    fun onViewModeChange(mode: ViewMode) {
+        val status = _statusFilter.value
+        savedStateHandle["view_${status?.name ?: "all"}"] = mode.name
+        _viewModes.update { it + (status to mode) }
+    }
+
+    fun onSortModeChange(mode: SortMode) {
+        val status = _statusFilter.value
+        savedStateHandle["sort_${status?.name ?: "all"}"] = mode.name
+        _sortModes.update { it + (status to mode) }
+    }
+
     fun onStatusFilterChange(status: ReadingStatus?) { _statusFilter.value = status }
 
     fun onGrantFolderAccess() {
@@ -123,6 +138,32 @@ class LibraryViewModel @Inject constructor(
             }
             addSpecificFilesUseCase(uris)
         }
+    }
+
+    private fun restoreViewModes(): Map<ReadingStatus?, ViewMode> {
+        val map = mutableMapOf<ReadingStatus?, ViewMode>()
+        savedStateHandle.get<String>("view_all")
+            ?.let { runCatching { ViewMode.valueOf(it) }.getOrNull() }
+            ?.let { map[null] = it }
+        ReadingStatus.entries.forEach { status ->
+            savedStateHandle.get<String>("view_${status.name}")
+                ?.let { runCatching { ViewMode.valueOf(it) }.getOrNull() }
+                ?.let { map[status] = it }
+        }
+        return map
+    }
+
+    private fun restoreSortModes(): Map<ReadingStatus?, SortMode> {
+        val map = mutableMapOf<ReadingStatus?, SortMode>()
+        savedStateHandle.get<String>("sort_all")
+            ?.let { runCatching { SortMode.valueOf(it) }.getOrNull() }
+            ?.let { map[null] = it }
+        ReadingStatus.entries.forEach { status ->
+            savedStateHandle.get<String>("sort_${status.name}")
+                ?.let { runCatching { SortMode.valueOf(it) }.getOrNull() }
+                ?.let { map[status] = it }
+        }
+        return map
     }
 }
 

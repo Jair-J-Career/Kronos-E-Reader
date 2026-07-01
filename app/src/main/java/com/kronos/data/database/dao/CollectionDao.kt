@@ -1,5 +1,6 @@
 package com.kronos.data.database.dao
 
+import androidx.room.ColumnInfo
 import androidx.room.Dao
 import androidx.room.Delete
 import androidx.room.Insert
@@ -10,6 +11,16 @@ import com.kronos.data.database.entity.BookCollectionCrossRef
 import com.kronos.data.database.entity.BookEntity
 import com.kronos.data.database.entity.CollectionEntity
 import kotlinx.coroutines.flow.Flow
+
+data class CollectionCountRow(
+    @ColumnInfo(name = "collection_id") val collectionId: Long,
+    @ColumnInfo(name = "count") val count: Int
+)
+
+data class CollectionCoverRow(
+    @ColumnInfo(name = "collection_id") val collectionId: Long,
+    @ColumnInfo(name = "cover_image_path") val coverImagePath: String
+)
 
 @Dao
 interface CollectionDao {
@@ -44,4 +55,16 @@ interface CollectionDao {
 
     @Delete
     suspend fun deleteCrossRef(crossRef: BookCollectionCrossRef)
+
+    @Query("SELECT collection_id, COUNT(*) AS count FROM book_collection_cross_ref GROUP BY collection_id")
+    fun observeBookCountsPerCollection(): Flow<List<CollectionCountRow>>
+
+    @Query("""
+        SELECT ref.collection_id AS collection_id, b.cover_image_path AS cover_image_path
+        FROM book_collection_cross_ref ref
+        INNER JOIN books b ON ref.book_id = b.id
+        WHERE b.is_in_trash = 0 AND b.cover_image_path IS NOT NULL
+        ORDER BY ref.added_at DESC
+    """)
+    fun observeCollectionCovers(): Flow<List<CollectionCoverRow>>
 }

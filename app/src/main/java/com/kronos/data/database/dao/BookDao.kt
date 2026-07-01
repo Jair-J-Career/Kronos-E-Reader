@@ -22,7 +22,12 @@ interface BookDao {
     """)
     fun observeBooksWithAnnotations(): Flow<List<BookWithAnnotations>>
 
-    @Query("SELECT * FROM books WHERE is_in_trash = 0 ORDER BY last_opened_at DESC")
+    @Query("""
+        SELECT b.* FROM books b
+        LEFT JOIN reading_progress rp ON b.id = rp.book_id
+        WHERE b.is_in_trash = 0
+        ORDER BY COALESCE(rp.updated_at, b.added_at) DESC
+    """)
     fun observeAll(): Flow<List<BookEntity>>
 
     @Query("SELECT * FROM books WHERE is_in_trash = 0 ORDER BY title ASC")
@@ -36,7 +41,7 @@ interface BookDao {
         LEFT JOIN reading_progress rp ON b.id = rp.book_id
         WHERE b.is_in_trash = 0
         AND COALESCE(rp.status, 'TO_READ') = :status
-        ORDER BY b.last_opened_at DESC
+        ORDER BY COALESCE(rp.updated_at, b.added_at) DESC
     """)
     fun observeByStatusRecent(status: String): Flow<List<BookEntity>>
 

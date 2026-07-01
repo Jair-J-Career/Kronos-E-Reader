@@ -7,6 +7,7 @@ import com.kronos.domain.usecase.quote.GetAllQuotesUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.stateIn
 import javax.inject.Inject
 
@@ -16,5 +17,6 @@ class QuotesViewModel @Inject constructor(
 ) : ViewModel() {
 
     val quotes: StateFlow<List<QuoteSummary>> = getAllQuotes()
+        .catch { emit(emptyList()) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 }

@@ -99,6 +99,14 @@ class BookInfoViewModel @Inject constructor(
         }
     }
 
+    fun onSaveReview(rating: Int?, review: String?) {
+        val progress = (uiState.value as? BookInfoUiState.Success)?.progress ?: return
+        val now = System.currentTimeMillis()
+        viewModelScope.launch(ioDispatcher) {
+            upsertReadingProgress(progress.copy(rating = rating, review = review, updatedAt = now))
+        }
+    }
+
     fun onMoveToTrash() {
         viewModelScope.launch(ioDispatcher) {
             moveToTrash(bookId)

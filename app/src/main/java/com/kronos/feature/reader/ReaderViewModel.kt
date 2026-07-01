@@ -138,11 +138,22 @@ class ReaderViewModel @Inject constructor(
                     val totalPages = state.totalPages
                     val readPct = if (totalPages > 0) (page + 1).toDouble() / totalPages * 100.0 else 0.0
                     val now = System.currentTimeMillis()
+                    val isLastPage = totalPages > 0 && page >= totalPages - 1
+                    val newStatus = when {
+                        isLastPage -> ReadingStatus.HAVE_READ
+                        state.readingProgress.status == ReadingStatus.HAVE_READ -> ReadingStatus.HAVE_READ
+                        else -> ReadingStatus.READING
+                    }
+                    val newCompletedAt = when {
+                        isLastPage && state.readingProgress.completedAt == null -> now
+                        else -> state.readingProgress.completedAt
+                    }
                     val updated = state.readingProgress.copy(
                         currentPage = page,
                         readPercentage = readPct,
-                        status = ReadingStatus.READING,
+                        status = newStatus,
                         startedAt = state.readingProgress.startedAt ?: now,
+                        completedAt = newCompletedAt,
                         updatedAt = now
                     )
                     upsertReadingProgress(updated)

@@ -1,23 +1,37 @@
 package com.kronos.feature.library.collections
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.ui.layout.ContentScale
+import coil.compose.AsyncImage
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -46,7 +60,12 @@ fun CollectionsScreen(
     viewModel: CollectionsViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val viewMode by viewModel.viewMode.collectAsStateWithLifecycle()
+    val bookCounts by viewModel.bookCounts.collectAsStateWithLifecycle()
+    val collectionCovers by viewModel.collectionCovers.collectAsStateWithLifecycle()
     var showCreateDialog by remember { mutableStateOf(false) }
+    var showOverflowMenu by remember { mutableStateOf(false) }
+    var showViewSubmenu by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -56,7 +75,42 @@ fun CollectionsScreen(
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 },
-                title = { Text("Collections") }
+                title = { Text("Collections") },
+                actions = {
+                    Box {
+                        IconButton(onClick = { showOverflowMenu = true }) {
+                            Icon(Icons.Default.MoreVert, contentDescription = "More options")
+                        }
+                        DropdownMenu(
+                            expanded = showOverflowMenu,
+                            onDismissRequest = {
+                                showOverflowMenu = false
+                                showViewSubmenu = false
+                            }
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("View  ›") },
+                                onClick = { showViewSubmenu = !showViewSubmenu }
+                            )
+                            if (showViewSubmenu) {
+                                CollectionViewMode.entries.forEach { mode ->
+                                    DropdownMenuItem(
+                                        text = { Text(mode.displayName()) },
+                                        leadingIcon = if (viewMode == mode) {
+                                            { Icon(Icons.Default.Check, contentDescription = null) }
+                                        } else null,
+                                        onClick = {
+                                            viewModel.onViewModeChange(mode)
+                                            showOverflowMenu = false
+                                            showViewSubmenu = false
+                                        },
+                                        modifier = Modifier.padding(start = 16.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
             )
         },
         floatingActionButton = {
@@ -83,32 +137,130 @@ fun CollectionsScreen(
                             .padding(paddingValues)
                     )
                 } else {
-                    LazyVerticalGrid(
-                        columns = GridCells.Fixed(2),
-                        contentPadding = paddingValues,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(horizontal = 12.dp)
-                    ) {
-                        items(state.collections, key = { it.id }) { collection ->
-                            ElevatedCard(
-                                onClick = { onCollectionClick(collection.id) },
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .aspectRatio(1.4f)
-                                        .padding(12.dp),
-                                    contentAlignment = Alignment.Center
+                    when (viewMode) {
+                        CollectionViewMode.QUICK -> LazyColumn(
+                            contentPadding = paddingValues,
+                            modifier = Modifier.fillMaxSize()
+                        ) {
+                            items(state.collections, key = { it.id }) { collection ->
+                                val count = bookCounts[collection.id] ?: 0
+                                ListItem(
+                                    headlineContent = { Text(collection.name) },
+                                    supportingContent = {
+                                        Text("$count ${if (count == 1) "book" else "books"}")
+                                    },
+                                    modifier = Modifier.clickable { onCollectionClick(collection.id) }
+                                )
+                                HorizontalDivider()
+                            }
+                        }
+
+                        CollectionViewMode.COVERS -> LazyVerticalGrid(
+                            columns = GridCells.Fixed(2),
+                            contentPadding = paddingValues,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(horizontal = 12.dp)
+                        ) {
+                            items(state.collections, key = { it.id }) { collection ->
+                                val covers = collectionCovers[collection.id] ?: emptyList()
+                                ElevatedCard(
+                                    onClick = { onCollectionClick(collection.id) },
+                                    modifier = Modifier.fillMaxWidth()
                                 ) {
-                                    Text(
-                                        text = collection.name,
-                                        style = MaterialTheme.typography.titleMedium,
-                                        textAlign = TextAlign.Center
-                                    )
+                                    if (covers.size >= 4) {
+                                        Column {
+                                            Box(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .aspectRatio(1.4f)
+                                            ) {
+                                                CollectionCoverGrid(
+                                                    covers = covers,
+                                                    modifier = Modifier.fillMaxSize()
+                                                )
+                                            }
+                                            Text(
+                                                text = collection.name,
+                                                style = MaterialTheme.typography.titleMedium,
+                                                textAlign = TextAlign.Center,
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .padding(12.dp)
+                                            )
+                                        }
+                                    } else {
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .aspectRatio(1.4f),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Text(
+                                                text = collection.name,
+                                                style = MaterialTheme.typography.titleMedium,
+                                                textAlign = TextAlign.Center,
+                                                modifier = Modifier.padding(12.dp)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        CollectionViewMode.GRID -> LazyVerticalGrid(
+                            columns = GridCells.Fixed(3),
+                            contentPadding = paddingValues,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp),
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(horizontal = 8.dp)
+                        ) {
+                            items(state.collections, key = { it.id }) { collection ->
+                                val covers = collectionCovers[collection.id] ?: emptyList()
+                                ElevatedCard(
+                                    onClick = { onCollectionClick(collection.id) },
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    if (covers.size >= 4) {
+                                        Column {
+                                            Box(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .aspectRatio(1f)
+                                            ) {
+                                                CollectionCoverGrid(
+                                                    covers = covers,
+                                                    modifier = Modifier.fillMaxSize()
+                                                )
+                                            }
+                                            Text(
+                                                text = collection.name,
+                                                style = MaterialTheme.typography.labelMedium,
+                                                textAlign = TextAlign.Center,
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .padding(8.dp)
+                                            )
+                                        }
+                                    } else {
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .aspectRatio(1f),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Text(
+                                                text = collection.name,
+                                                style = MaterialTheme.typography.labelMedium,
+                                                textAlign = TextAlign.Center,
+                                                modifier = Modifier.padding(8.dp)
+                                            )
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -156,4 +308,44 @@ private fun CreateCollectionDialog(
             TextButton(onClick = onDismiss) { Text("Cancel") }
         }
     )
+}
+
+@Composable
+private fun CollectionCoverGrid(covers: List<String>, modifier: Modifier = Modifier) {
+    Column(modifier = modifier) {
+        Row(modifier = Modifier.weight(1f).fillMaxWidth()) {
+            AsyncImage(
+                model = covers[0],
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.weight(1f).fillMaxHeight()
+            )
+            AsyncImage(
+                model = covers[1],
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.weight(1f).fillMaxHeight()
+            )
+        }
+        Row(modifier = Modifier.weight(1f).fillMaxWidth()) {
+            AsyncImage(
+                model = covers[2],
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.weight(1f).fillMaxHeight()
+            )
+            AsyncImage(
+                model = covers[3],
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.weight(1f).fillMaxHeight()
+            )
+        }
+    }
+}
+
+private fun CollectionViewMode.displayName() = when (this) {
+    CollectionViewMode.QUICK -> "Quick"
+    CollectionViewMode.COVERS -> "Covers"
+    CollectionViewMode.GRID -> "Grid"
 }

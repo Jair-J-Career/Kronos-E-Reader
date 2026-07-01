@@ -10,6 +10,7 @@ import com.kronos.domain.usecase.quote.GetQuotesForBookUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import javax.inject.Inject
@@ -33,10 +34,12 @@ class AnnotationDetailViewModel @Inject constructor(
     val items: StateFlow<AnnotationItems> = if (type == "quotes") {
         getQuotesForBook(bookId)
             .map { list -> AnnotationItems.Quotes(list.sortedBy { it.pageNumber }) }
+            .catch { emit(AnnotationItems.Loading) }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), AnnotationItems.Loading)
     } else {
         getNotesForBook(bookId)
             .map { list -> AnnotationItems.Notes(list.sortedBy { it.pageNumber }) }
+            .catch { emit(AnnotationItems.Loading) }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), AnnotationItems.Loading)
     }
 }

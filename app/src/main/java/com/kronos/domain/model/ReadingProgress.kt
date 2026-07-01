@@ -9,5 +9,7 @@ data class ReadingProgress(
     val startedAt: Long? = null,
     val completedAt: Long? = null,
     val updatedAt: Long = System.currentTimeMillis(),
-    val isNightMode: Boolean = false
+    val isNightMode: Boolean = false,
+    val rating: Int? = null,
+    val review: String? = null
 )

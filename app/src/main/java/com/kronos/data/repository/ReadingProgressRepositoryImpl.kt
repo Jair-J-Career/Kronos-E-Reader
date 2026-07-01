@@ -42,7 +42,9 @@ private fun ReadingProgressEntity.toDomain() = ReadingProgress(
     startedAt = startedAt,
     completedAt = completedAt,
     updatedAt = updatedAt,
-    isNightMode = isNightMode
+    isNightMode = isNightMode,
+    rating = rating,
+    review = review
 )
 
 private fun ReadingProgress.toEntity() = ReadingProgressEntity(
@@ -54,5 +56,7 @@ private fun ReadingProgress.toEntity() = ReadingProgressEntity(
     startedAt = startedAt,
     completedAt = completedAt,
     updatedAt = updatedAt,
-    isNightMode = isNightMode
+    isNightMode = isNightMode,
+    rating = rating,
+    review = review
 )

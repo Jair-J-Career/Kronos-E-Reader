@@ -18,6 +18,7 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -65,8 +66,10 @@ class ProgressViewModel @Inject constructor(
                     quotes = quotes,
                     bookmarks = bookmarks,
                     bookItem = book
-                )
-            }.collect { _uiState.value = it }
+                ) as ProgressUiState
+            }
+                .catch { e -> emit(ProgressUiState.Error(e.message ?: "Unexpected error")) }
+                .collect { _uiState.value = it }
         }
     }
 

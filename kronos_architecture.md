@@ -1,327 +1,233 @@
-# Kronos — Offline-First Android PDF Reader: Technical Blueprint
+# Kronos — Architecture Reference
 
-**Project codename:** Kronos v1.0
-**Platform:** Android (minSdk 23, targetSdk 36)
-**Primary language:** Kotlin
-**Status:** Greenfield — this document is the authoritative architecture reference
-
----
-
-## Table of Contents
-
-1. [Module Layout](#1-module-layout)
-2. [Full Directory Tree](#2-full-directory-tree)
-3. [Room Database Schema](#3-room-database-schema)
-4. [Key Architecture Patterns](#4-key-architecture-patterns)
-5. [Coding Standards](#5-coding-standards)
-6. [Dependency Catalog Reference](#6-dependency-catalog-reference)
+**Platform:** Android (minSdk 23, targetSdk 36)  
+**Language:** Kotlin  
+**UI toolkit:** Jetpack Compose + Material3  
+**Database:** Room v3  
+**DI:** Hilt/Dagger  
 
 ---
 
-## 1. Module Layout
+## 1. Overview
 
-The project uses a **single `:app` module**. All source is organized by package under `com.kronos` rather than across separate Gradle modules. This eliminates multi-module build overhead and the need to maintain inter-module dependency declarations while the architecture is still evolving.
+Kronos is a local-first Android PDF management application. All data is stored on-device in a single SQLite database managed by Room. There is no backend, no sync service, and no network dependency at runtime.
 
-Package-level boundaries enforce the same layering rules that Gradle modules would enforce — they just rely on code review and Detekt rather than the build system.
-
-```
-Kronos_v10/
-├── build.gradle.kts          ← single app build script
-├── settings.gradle.kts
-├── gradle/
-│   └── libs.versions.toml
-└── app/
-    └── src/
-        ├── main/
-        │   ├── AndroidManifest.xml
-        │   └── java/com/kronos/   ← all source lives here
-        ├── test/
-        └── androidTest/
-```
-
-**Dependency direction (enforced by package discipline):**
+The project uses a **single `:app` module**. Package-based discipline enforces the same layering rules that separate Gradle modules would enforce:
 
 ```
-feature.* → ui.* → domain.* ← data.*
-                            ↑
-                         common.*
+feature.* → domain.* ← data.*
+                      ↑
+                   common.*
 ```
 
-- `feature.*` packages import from `domain.*` and `ui.*`; they never import from `data.*` directly
-- `data.*` imports from `domain.*` (implements its interfaces) and `common.*`
-- `ui.*` imports domain models for Composable parameters only
+- `feature.*` imports from `domain.*` only — never from `data.*`
+- `data.*` implements `domain.repository` interfaces and imports `domain.model` for mapping
+- `domain.*` has zero Android framework dependencies
 - Feature packages never share ViewModels or internal state with each other
 
 ---
 
-## 2. Full Directory Tree
+## 2. Domain Layer
 
-```
-app/src/main/java/com/kronos/
-│
-├── KronosApp.kt
-├── MainActivity.kt
-│
-├── navigation/
-│   ├── KronosNavGraph.kt
-│   └── NavRoutes.kt
-│
-├── common/
-│   ├── AppConstants.kt
-│   ├── KronosResult.kt
-│   ├── DateUtils.kt
-│   ├── FileUtils.kt
-│   └── HashUtils.kt
-│
-├── data/
-│   ├── database/
-│   │   ├── KronosDatabase.kt
-│   │   ├── DatabaseMigrations.kt
-│   │   ├── converter/
-│   │   │   └── RoomTypeConverters.kt
-│   │   ├── dao/
-│   │   │   ├── AuthorDao.kt
-│   │   │   ├── BookDao.kt
-│   │   │   ├── BookmarkDao.kt
-│   │   │   ├── CollectionDao.kt
-│   │   │   ├── NoteDao.kt
-│   │   │   ├── QuoteDao.kt
-│   │   │   ├── ReadingProgressDao.kt
-│   │   │   ├── SearchHistoryDao.kt
-│   │   │   └── SeriesDao.kt
-│   │   └── entity/
-│   │       ├── AuthorEntity.kt
-│   │       ├── BookAuthorCrossRef.kt
-│   │       ├── BookCollectionCrossRef.kt
-│   │       ├── BookEntity.kt
-│   │       ├── BookmarkEntity.kt
-│   │       ├── CollectionEntity.kt
-│   │       ├── NoteEntity.kt
-│   │       ├── QuoteEntity.kt
-│   │       ├── ReadingProgressEntity.kt
-│   │       ├── SearchHistoryEntity.kt
-│   │       └── SeriesEntity.kt
-│   ├── di/
-│   │   ├── DatabaseModule.kt
-│   │   ├── PdfModule.kt
-│   │   └── RepositoryModule.kt
-│   ├── pdf/
-│   │   ├── PdfDocumentSession.kt
-│   │   ├── PdfPageCache.kt
-│   │   ├── PdfRenderWorker.kt
-│   │   └── TextExtractionSourceImpl.kt
-│   └── repository/
-│       ├── AuthorRepositoryImpl.kt
-│       ├── BookRepositoryImpl.kt
-│       ├── BookmarkRepositoryImpl.kt
-│       ├── CollectionRepositoryImpl.kt
-│       ├── NoteRepositoryImpl.kt
-│       ├── QuoteRepositoryImpl.kt
-│       ├── ReadingProgressRepositoryImpl.kt
-│       ├── SearchHistoryRepositoryImpl.kt
-│       └── SeriesRepositoryImpl.kt
-│
-├── domain/
-│   ├── model/
-│   │   ├── Author.kt
-│   │   ├── Book.kt
-│   │   ├── Bookmark.kt
-│   │   ├── Collection.kt
-│   │   ├── Note.kt
-│   │   ├── PageTextChunk.kt
-│   │   ├── PdfPageBitmapState.kt
-│   │   ├── Quote.kt
-│   │   ├── ReadingProgress.kt
-│   │   ├── ReadingStatus.kt
-│   │   ├── SearchHistoryItem.kt
-│   │   └── Series.kt
-│   ├── repository/
-│   │   ├── AuthorRepository.kt
-│   │   ├── BookRepository.kt
-│   │   ├── BookmarkRepository.kt
-│   │   ├── CollectionRepository.kt
-│   │   ├── NoteRepository.kt
-│   │   ├── QuoteRepository.kt
-│   │   ├── ReadingProgressRepository.kt
-│   │   ├── SearchHistoryRepository.kt
-│   │   └── SeriesRepository.kt
-│   ├── source/
-│   │   └── TextExtractionSource.kt
-│   └── usecase/
-│       ├── book/
-│       │   ├── AddBookUseCase.kt
-│       │   ├── DeleteBookUseCase.kt
-│       │   ├── GetAllBooksUseCase.kt
-│       │   ├── GetBookByIdUseCase.kt
-│       │   ├── GetFavoriteBooksUseCase.kt
-│       │   ├── GetTrashedBooksUseCase.kt
-│       │   ├── MoveToTrashUseCase.kt
-│       │   ├── RestoreFromTrashUseCase.kt
-│       │   └── ToggleFavoriteUseCase.kt
-│       ├── bookmark/
-│       │   ├── AddBookmarkUseCase.kt
-│       │   ├── DeleteBookmarkUseCase.kt
-│       │   └── GetBookmarksForBookUseCase.kt
-│       ├── collection/
-│       │   ├── AddBookToCollectionUseCase.kt
-│       │   ├── CreateCollectionUseCase.kt
-│       │   ├── GetCollectionsUseCase.kt
-│       │   └── RemoveBookFromCollectionUseCase.kt
-│       ├── note/
-│       │   ├── AddNoteUseCase.kt
-│       │   ├── DeleteNoteUseCase.kt
-│       │   ├── GetNotesForBookUseCase.kt
-│       │   └── UpdateNoteUseCase.kt
-│       ├── progress/
-│       │   ├── GetReadingProgressUseCase.kt
-│       │   ├── UpdateReadingProgressUseCase.kt
-│       │   └── UpdateReadingStatusUseCase.kt
-│       ├── quote/
-│       │   ├── AddQuoteUseCase.kt
-│       │   ├── DeleteQuoteUseCase.kt
-│       │   └── GetQuotesForBookUseCase.kt
-│       └── search/
-│           ├── ClearSearchHistoryUseCase.kt
-│           ├── GetSearchHistoryUseCase.kt
-│           ├── SaveSearchQueryUseCase.kt
-│           └── SearchBooksUseCase.kt
-│
-├── ui/
-│   ├── component/
-│   │   ├── AnnotationChip.kt
-│   │   ├── BookCoverCard.kt
-│   │   ├── ConfirmationDialog.kt
-│   │   ├── EmptyState.kt
-│   │   ├── ErrorState.kt
-│   │   ├── KronosTopBar.kt
-│   │   └── LoadingIndicator.kt
-│   ├── theme/
-│   │   ├── Color.kt
-│   │   ├── Shape.kt
-│   │   ├── Theme.kt
-│   │   └── Typography.kt
-│   └── util/
-│       ├── ComposeExtensions.kt
-│       └── WindowSizeClass.kt
-│
-└── feature/
-    ├── library/
-    │   ├── LibraryScreen.kt
-    │   ├── LibraryUiState.kt
-    │   ├── LibraryViewModel.kt
-    │   ├── collections/
-    │   │   ├── CollectionDetailScreen.kt
-    │   │   ├── CollectionDetailViewModel.kt
-    │   │   ├── CollectionsScreen.kt
-    │   │   └── CollectionsViewModel.kt
-    │   ├── component/
-    │   │   ├── BookGrid.kt
-    │   │   ├── BookListItem.kt
-    │   │   ├── LibraryFilterBar.kt
-    │   │   └── SortMenuSheet.kt
-    │   ├── favorites/
-    │   │   ├── FavoritesScreen.kt
-    │   │   └── FavoritesViewModel.kt
-    │   └── trash/
-    │       ├── TrashScreen.kt
-    │       └── TrashViewModel.kt
-    │
-    ├── reader/
-    │   ├── ReaderScreen.kt
-    │   ├── ReaderUiState.kt
-    │   ├── ReaderViewModel.kt
-    │   ├── component/
-    │   │   ├── PageSlider.kt
-    │   │   ├── PdfPageView.kt
-    │   │   ├── ReaderBottomBar.kt
-    │   │   ├── ReaderOverlay.kt
-    │   │   └── ReaderTopBar.kt
-    │   └── panel/
-    │       ├── BookmarkPanel.kt
-    │       ├── NotePanel.kt
-    │       └── QuotePanel.kt
-    │
-    ├── search/
-    │   ├── SearchScreen.kt
-    │   ├── SearchUiState.kt
-    │   ├── SearchViewModel.kt
-    │   └── component/
-    │       ├── SearchBar.kt
-    │       ├── SearchHistoryList.kt
-    │       └── SearchResultItem.kt
-    │
-    └── settings/
-        ├── SettingsScreen.kt
-        ├── SettingsUiState.kt
-        ├── SettingsViewModel.kt
-        └── component/
-            ├── SettingsSection.kt
-            └── ThemeSettingItem.kt
+### 2.1 Enums
+
+**`ReadingStatus`** — tracks where a book sits in the reading workflow
+
+| Value | Meaning |
+|---|---|
+| `TO_READ` | Added to library, not started |
+| `READING` | Actively in progress |
+| `HAVE_READ` | Finished |
+
+**`ViewMode`** — controls how the library list renders books
+
+| Value | Layout |
+|---|---|
+| `COMPLETE` | Large cards with cover, title, progress bar |
+| `QUICK` | Compact rows |
+| `LIST` | `LazyColumn` with `ListItem` |
+| `GRID` | `LazyVerticalGrid`, 3 columns |
+
+**`SortMode`** — the active sort applied to any given library tab
+
+| Value | `ORDER BY` logic |
+|---|---|
+| `RECENT` | `COALESCE(rp.updated_at, b.added_at) DESC` via LEFT JOIN on `reading_progress` |
+| `TITLE` | `b.title ASC` |
+| `AUTHOR` | Author name, joined through `book_author_cross_ref` |
+
+**`CollectionViewMode`** — controls how the collections screen renders
+
+| Value | Layout |
+|---|---|
+| `COVERS` | 2-column `LazyVerticalGrid`, taller aspect ratio cards |
+| `GRID` | 3-column `LazyVerticalGrid`, square cards |
+| `LIST` | `LazyColumn` |
+
+---
+
+### 2.2 Domain Models
+
+All domain models are plain Kotlin data classes with no Room or Android annotations.
+
+| Model | Key fields |
+|---|---|
+| `Book` | `id`, `title`, `filePath`, `fileUri`, `pageCount`, `coverImagePath`, `addedAt`, `isInTrash` |
+| `ReadingProgress` | `bookId`, `status: ReadingStatus`, `currentPage`, `readPercentage`, `rating: Int?` (1–10), `review: String?`, `updatedAt` |
+| `Collection` | `id`, `name`, `description`, `createdAt` |
+| `Quote` | `id`, `bookId`, `pageNumber`, `text`, `createdAt` |
+| `Note` | `id`, `bookId`, `pageNumber?`, `text` — nullable `pageNumber` means book-level note |
+| `Bookmark` | `id`, `bookId`, `pageNumber`, `label?` |
+| `BookAnnotationSummary` | `bookId`, `title`, `quoteCount`, `noteCount`, `latestAnnotationAt` — flattened read model for the Annotations Hub |
+| `QuoteSummary` | Flattened quote + book title for the global quotes list |
+
+---
+
+### 2.3 Repository Interfaces
+
+Interfaces live in `domain.repository`. Feature packages depend on these — never on implementations.
+
+`Flow`-returning functions map to Room DAO reactive queries. `suspend` functions wrap single-shot DAO operations.
+
+```kotlin
+interface BookRepository {
+    fun observeAll(sort: SortMode): Flow<List<Book>>
+    fun observeByStatus(status: ReadingStatus, sort: SortMode): Flow<List<Book>>
+    fun observeTrashed(): Flow<List<Book>>
+    suspend fun getById(id: Long): Book?
+    suspend fun add(book: Book): Long
+    suspend fun moveToTrash(id: Long)
+    suspend fun restoreFromTrash(id: Long)
+    suspend fun permanentlyDelete(id: Long)
+}
+
+interface CollectionRepository {
+    fun observeAll(): Flow<List<Collection>>
+    fun observeBookCounts(): Flow<Map<Long, Int>>
+    fun observeCollectionCovers(): Flow<Map<Long, List<String>>>
+    suspend fun create(name: String, description: String?)
+}
+
+interface ReadingProgressRepository {
+    fun observeByBookId(bookId: Long): Flow<ReadingProgress?>
+    fun observeAll(): Flow<List<ReadingProgress>>
+    suspend fun get(bookId: Long): ReadingProgress?
+    suspend fun upsert(progress: ReadingProgress)
+    suspend fun updateStatus(bookId: Long, status: ReadingStatus)
+    suspend fun saveReview(bookId: Long, rating: Int?, review: String?)
+}
 ```
 
-Test files mirror this structure under `app/src/test/java/com/kronos/` and `app/src/androidTest/java/com/kronos/`.
+---
+
+### 2.4 Use Cases
+
+One class, one operation. Use cases are the sole entry point for features into the domain.
+
+```
+domain/usecase/
+├── book/
+│   ├── GetAllBooksUseCase
+│   ├── GetBooksByStatusUseCase
+│   ├── GetBookByIdUseCase
+│   ├── GetTrashedBooksUseCase
+│   ├── GetBooksWithAnnotationsUseCase
+│   ├── AddSpecificFilesUseCase
+│   ├── ScanFolderUseCase
+│   ├── MoveToTrashUseCase
+│   ├── RestoreFromTrashUseCase
+│   └── EmptyTrashUseCase
+├── collection/
+│   ├── GetCollectionsUseCase
+│   ├── GetCollectionBookCountsUseCase
+│   ├── GetCollectionCoversUseCase
+│   ├── CreateCollectionUseCase
+│   ├── AddBookToCollectionUseCase
+│   └── RemoveBookFromCollectionUseCase
+├── readingprogress/
+│   ├── GetReadingProgressUseCase
+│   ├── ObserveAllReadingProgressUseCase
+│   ├── UpdateReadingProgressUseCase
+│   ├── UpdateReadingStatusUseCase
+│   └── SaveBookReviewUseCase
+├── quote/
+│   ├── GetAllQuotesUseCase
+│   ├── GetQuotesForBookUseCase
+│   ├── AddQuoteUseCase
+│   └── DeleteQuoteUseCase
+├── note/
+│   ├── GetNotesForBookUseCase
+│   ├── AddNoteUseCase
+│   ├── UpdateNoteUseCase
+│   └── DeleteNoteUseCase
+└── bookmark/
+    ├── GetBookmarksForBookUseCase
+    ├── AddBookmarkUseCase
+    └── DeleteBookmarkUseCase
+```
 
 ---
 
-## 3. Room Database Schema
+## 3. Data Layer
 
-**Database name:** `kronos.db`
-**Current version:** 1
+### 3.1 Room Database
 
-All timestamp columns store Unix epoch milliseconds as `INTEGER NOT NULL` unless noted nullable. `BOOLEAN` columns are `INTEGER` (0/1). Enum columns are `TEXT` via `@TypeConverter`.
+**Database name:** `kronos.db`  
+**Current version:** 3
 
----
-
-### 3.1 `books`
-
-| Column | SQLite Type | Nullable | Constraints | Notes |
-|---|---|---|---|---|
-| `id` | INTEGER | NO | PK, AUTOINCREMENT | |
-| `title` | TEXT | NO | | |
-| `file_path` | TEXT | NO | UNIQUE | Absolute path on device |
-| `file_uri` | TEXT | NO | | Content URI for persistence |
-| `file_size_bytes` | INTEGER | NO | | |
-| `page_count` | INTEGER | NO | | Set after first open |
-| `cover_image_path` | TEXT | YES | | Extracted thumbnail cache path |
-| `added_at` | INTEGER | NO | | Epoch ms |
-| `last_opened_at` | INTEGER | YES | | |
-| `is_favorite` | INTEGER | NO | DEFAULT 0 | |
-| `is_in_trash` | INTEGER | NO | DEFAULT 0 | |
-| `trashed_at` | INTEGER | YES | | |
-| `series_id` | INTEGER | YES | FK → `series(id)` ON DELETE SET NULL | |
-| `series_position` | REAL | YES | | Supports half-positions (e.g. 1.5) |
-| `embedding_id` | TEXT | YES | | Future: vector store reference |
-| `source_text_hash` | TEXT | YES | | SHA-256 of full extracted text |
-
-**Indices:** `(is_in_trash)`, `(is_favorite)`, `(series_id)`, `(last_opened_at DESC)`
+All timestamps are Unix epoch milliseconds stored as `INTEGER`. Enum columns are `TEXT` via `RoomTypeConverters`. `BOOLEAN` columns are `INTEGER` (0/1).
 
 ---
 
-### 3.2 `authors`
+#### `books`
 
-| Column | SQLite Type | Nullable | Constraints |
+| Column | Type | Null | Notes |
 |---|---|---|---|
 | `id` | INTEGER | NO | PK, AUTOINCREMENT |
-| `name` | TEXT | NO | UNIQUE |
-| `biography` | TEXT | YES | |
-| `embedding_id` | TEXT | YES | |
+| `title` | TEXT | NO | |
+| `file_path` | TEXT | NO | UNIQUE |
+| `file_uri` | TEXT | NO | Persistable content URI |
+| `file_size_bytes` | INTEGER | NO | |
+| `page_count` | INTEGER | NO | Set on first open |
+| `cover_image_path` | TEXT | YES | Extracted thumbnail; used for collection cover grid |
+| `added_at` | INTEGER | NO | |
+| `last_opened_at` | INTEGER | YES | |
+| `is_favorite` | INTEGER | NO | DEFAULT 0 |
+| `is_in_trash` | INTEGER | NO | DEFAULT 0 |
+| `trashed_at` | INTEGER | YES | |
+| `series_id` | INTEGER | YES | FK → `series(id)` ON DELETE SET NULL |
+| `series_position` | REAL | YES | Supports half-positions (e.g. 1.5) |
+| `embedding_id` | TEXT | YES | Future NLP hook |
+| `source_text_hash` | TEXT | YES | SHA-256 of full extracted text |
+
+**Indices:** `(is_in_trash)`, `(is_favorite)`, `(added_at DESC)`
 
 ---
 
-### 3.3 `series`
+#### `reading_progress`
 
-| Column | SQLite Type | Nullable | Constraints |
+One row per book. `book_id` is UNIQUE.
+
+| Column | Type | Null | Notes |
 |---|---|---|---|
 | `id` | INTEGER | NO | PK, AUTOINCREMENT |
-| `name` | TEXT | NO | UNIQUE |
-| `description` | TEXT | YES | |
-| `embedding_id` | TEXT | YES | |
+| `book_id` | INTEGER | NO | UNIQUE, FK → `books(id)` ON DELETE CASCADE |
+| `status` | TEXT | NO | DEFAULT `'TO_READ'` — enum `ReadingStatus` |
+| `current_page` | INTEGER | NO | DEFAULT 0, 0-indexed |
+| `read_percentage` | REAL | NO | DEFAULT 0.0, range 0.0–100.0 |
+| `started_at` | INTEGER | YES | Set when status transitions to `READING` |
+| `completed_at` | INTEGER | YES | Set when status transitions to `HAVE_READ` |
+| `updated_at` | INTEGER | NO | Written on every progress save |
+| `rating` | INTEGER | YES | **Added v3.** 1–10 star rating, null if unrated |
+| `review` | TEXT | YES | **Added v3.** Free-text personal review |
+
+The RECENT sort in `BookDao` uses `COALESCE(rp.updated_at, b.added_at) DESC` via a LEFT JOIN so books with no progress row still sort by import date.
 
 ---
 
-### 3.4 `collections`
+#### `collections`
 
-| Column | SQLite Type | Nullable | Constraints |
+| Column | Type | Null | Notes |
 |---|---|---|---|
 | `id` | INTEGER | NO | PK, AUTOINCREMENT |
 | `name` | TEXT | NO | |
@@ -332,535 +238,533 @@ All timestamp columns store Unix epoch milliseconds as `INTEGER NOT NULL` unless
 
 ---
 
-### 3.5 `book_author_cross_ref` (Junction)
+#### `book_collection_cross_ref`
 
-| Column | SQLite Type | Nullable | Constraints |
-|---|---|---|---|
-| `book_id` | INTEGER | NO | PK (composite), FK → `books(id)` ON DELETE CASCADE |
-| `author_id` | INTEGER | NO | PK (composite), FK → `authors(id)` ON DELETE CASCADE |
+| Column | Type | Notes |
+|---|---|---|
+| `book_id` | INTEGER | PK (composite), FK → `books(id)` ON DELETE CASCADE |
+| `collection_id` | INTEGER | PK (composite), FK → `collections(id)` ON DELETE CASCADE |
+| `added_at` | INTEGER | ORDER BY column for cover selection |
 
-**Composite PK:** `(book_id, author_id)`
-**Index:** `(author_id)`
-
----
-
-### 3.6 `book_collection_cross_ref` (Junction)
-
-| Column | SQLite Type | Nullable | Constraints |
-|---|---|---|---|
-| `book_id` | INTEGER | NO | PK (composite), FK → `books(id)` ON DELETE CASCADE |
-| `collection_id` | INTEGER | NO | PK (composite), FK → `collections(id)` ON DELETE CASCADE |
-| `added_at` | INTEGER | NO | |
-
-**Composite PK:** `(book_id, collection_id)`
 **Index:** `(collection_id)`
 
 ---
 
-### 3.7 `reading_progress`
+#### `quotes`
 
-| Column | SQLite Type | Nullable | Constraints | Notes |
-|---|---|---|---|---|
-| `id` | INTEGER | NO | PK, AUTOINCREMENT | |
-| `book_id` | INTEGER | NO | UNIQUE, FK → `books(id)` ON DELETE CASCADE | One record per book |
-| `status` | TEXT | NO | DEFAULT 'TO_READ' | Enum: `TO_READ`, `READING`, `HAVE_READ` |
-| `current_page` | INTEGER | NO | DEFAULT 0 | 0-indexed |
-| `read_percentage` | REAL | NO | DEFAULT 0.0 | 0.0 – 100.0 |
-| `started_at` | INTEGER | YES | | Set when status → `READING` |
-| `completed_at` | INTEGER | YES | | Set when status → `HAVE_READ` |
-| `updated_at` | INTEGER | NO | | |
-
----
-
-### 3.8 `bookmarks`
-
-| Column | SQLite Type | Nullable | Constraints |
-|---|---|---|---|
-| `id` | INTEGER | NO | PK, AUTOINCREMENT |
-| `book_id` | INTEGER | NO | FK → `books(id)` ON DELETE CASCADE |
-| `page_number` | INTEGER | NO | |
-| `label` | TEXT | YES | |
-| `created_at` | INTEGER | NO | |
-| `embedding_id` | TEXT | YES | |
-| `source_text_hash` | TEXT | YES | |
-
-**Index:** `(book_id)`
+| Column | Type | Null |
+|---|---|---|
+| `id` | INTEGER | NO |
+| `book_id` | INTEGER | NO — FK → `books(id)` ON DELETE CASCADE |
+| `page_number` | INTEGER | NO |
+| `text` | TEXT | NO |
+| `created_at` | INTEGER | NO |
+| `updated_at` | INTEGER | NO |
+| `embedding_id` | TEXT | YES |
+| `source_text_hash` | TEXT | YES |
 
 ---
 
-### 3.9 `quotes`
+#### `notes`
 
-| Column | SQLite Type | Nullable | Constraints |
+| Column | Type | Null | Notes |
 |---|---|---|---|
-| `id` | INTEGER | NO | PK, AUTOINCREMENT |
+| `id` | INTEGER | NO | |
 | `book_id` | INTEGER | NO | FK → `books(id)` ON DELETE CASCADE |
-| `page_number` | INTEGER | NO | |
+| `page_number` | INTEGER | YES | NULL = book-level note |
 | `text` | TEXT | NO | |
 | `created_at` | INTEGER | NO | |
 | `updated_at` | INTEGER | NO | |
+| `linked_quote_id` | INTEGER | YES | FK → `quotes(id)` ON DELETE SET NULL |
 | `embedding_id` | TEXT | YES | |
-| `source_text_hash` | TEXT | YES | SHA-256 of `text` column |
-
-**Index:** `(book_id)`
+| `source_text_hash` | TEXT | YES | |
 
 ---
 
-### 3.10 `notes`
+#### `bookmarks`
 
-| Column | SQLite Type | Nullable | Constraints | Notes |
-|---|---|---|---|---|
-| `id` | INTEGER | NO | PK, AUTOINCREMENT | |
-| `book_id` | INTEGER | NO | FK → `books(id)` ON DELETE CASCADE | |
-| `page_number` | INTEGER | YES | | NULL = book-level note |
-| `text` | TEXT | NO | | |
-| `created_at` | INTEGER | NO | | |
-| `updated_at` | INTEGER | NO | | |
-| `linked_quote_id` | INTEGER | YES | FK → `quotes(id)` ON DELETE SET NULL | |
-| `embedding_id` | TEXT | YES | | |
-| `source_text_hash` | TEXT | YES | | |
-
-**Indices:** `(book_id)`, `(linked_quote_id)`
+| Column | Type | Null |
+|---|---|---|
+| `id` | INTEGER | NO |
+| `book_id` | INTEGER | NO — FK → `books(id)` ON DELETE CASCADE |
+| `page_number` | INTEGER | NO |
+| `label` | TEXT | YES |
+| `created_at` | INTEGER | NO |
 
 ---
 
-### 3.11 `search_history`
+### 3.2 DAOs
 
-| Column | SQLite Type | Nullable | Constraints |
-|---|---|---|---|
-| `id` | INTEGER | NO | PK, AUTOINCREMENT |
-| `query` | TEXT | NO | |
-| `searched_at` | INTEGER | NO | |
-| `result_count` | INTEGER | YES | |
+**`BookDao`**
 
-**Indices:** `(query)`, `(searched_at DESC)`
+RECENT sort requires a LEFT JOIN so books with no `reading_progress` row are still returned:
 
----
-
-### 3.12 Entity Relationship Summary
-
-```
-series ──< books >── book_author_cross_ref >── authors
-                │
-                └── book_collection_cross_ref >── collections
-                │
-                └── reading_progress (1:1)
-                │
-                └── bookmarks (1:many)
-                │
-                └── quotes (1:many)
-                        │
-                        └── notes (linked via linked_quote_id, optional)
-
-books ──< notes (1:many, book-level notes have null page_number)
+```sql
+SELECT b.* FROM books b
+LEFT JOIN reading_progress rp ON b.id = rp.book_id
+WHERE b.is_in_trash = 0
+ORDER BY COALESCE(rp.updated_at, b.added_at) DESC
 ```
 
----
-
-### 3.13 Embedding-Ready Fields
-
-These nullable columns are v1 placeholders. No embedding logic is implemented in this version. They exist to avoid a schema migration when local NLP is added.
-
-| Entity | `embedding_id` | `source_text_hash` | Purpose |
-|---|---|---|---|
-| `books` | YES | YES | Embed full-text; hash detects file changes |
-| `authors` | YES | — | Embed biography for profile generation |
-| `series` | YES | — | Embed description for thematic search |
-| `bookmarks` | YES | YES | Embed surrounding page context |
-| `quotes` | YES | YES | Embed quote text directly; hash detects edits |
-| `notes` | YES | YES | Embed note text; hash detects edits |
-
-`embedding_id` is a `TEXT` reference to a future external or local vector store. It is never a FK to another Room table.
-
----
-
-## 4. Key Architecture Patterns
-
-### 4.1 PdfRenderer Sliding Window
-
-**Problem:** A 500-page document at 1080×1920 px per page would need ~4 GB of `Bitmap` memory if all pages were held simultaneously. `PdfRenderer` is also not thread-safe and requires serial page access.
-
-**Conceptual pipeline:**
-
-```
-User scrolls ──► visible page index changes
-                         │
-                         ▼
-              PdfRenderWorker (coroutine, IO dispatcher,
-              limitedParallelism = 1)
-                         │
-             ┌───────────┴───────────┐
-             │  Compute window:      │
-             │  [index-N .. index+N] │
-             │  default N = 3        │
-             └───────────┬───────────┘
-                         │
-          ┌──────────────┼───────────────┐
-          ▼              ▼               ▼
-    Already in      In window,       Outside window
-    PdfPageCache    not cached       → evict + recycle()
-    (no-op)         → render & store
+Status-filtered variant appends:
+```sql
+AND COALESCE(rp.status, 'TO_READ') = :status
 ```
 
-**Component responsibilities:**
+**`CollectionDao`**
 
-`PdfDocumentSession` — owns the open `PdfRenderer` and its `ParcelFileDescriptor`. Opened when the reader screen enters composition, closed on exit. All page access routes through this object. Exposes `suspend fun renderPage(pageIndex: Int, width: Int, height: Int): Bitmap` that opens the page, renders, and closes within a `Mutex`-guarded critical section. The `TextExtractionSourceImpl` also acquires this same mutex when extracting text — the two pipelines are serialized but unaware of each other.
-
-`PdfPageCache` — `LinkedHashMap<Int, Bitmap>` with fixed capacity. Evicts the entry farthest from the current page when capacity is exceeded, calling `bitmap.recycle()` on eviction.
-
-`PdfRenderWorker` — watches a `StateFlow<Int>` (current visible page). On each emission: evicts out-of-window pages, then iterates render priority `[current, current+1, current-1, current+2, current-2, ...]`, and for each uncached page launches a coroutine that calls `PdfDocumentSession.renderPage` and emits a `PdfPageBitmapState` update into the shared `MutableStateFlow<Map<Int, PdfPageBitmapState>>`.
-
-`PdfPageBitmapState` (sealed class in `domain.model`):
-
-```
-object Idle
-object Loading
-data class Rendered(val bitmap: Bitmap)
-data class Error(val cause: Throwable)
-```
-
-**Thread model:**
-
-```
-UI thread                IO dispatcher (limitedParallelism = 1)
-    │                                     │
-    │  currentPage = 47                   │
-    ├────────────────────────────────────►│
-    │                                     │  renderPage(47) → (48) → (46) → ...
-    │  pageStates updates                 │
-    │◄────────────────────────────────────┤
-```
-
-`limitedParallelism(1)` enforces serial `PdfRenderer` access without a dedicated thread.
-
----
-
-### 4.2 Decoupled Reader State Flows
-
-**Problem:** If `pageStates: Map<Int, PdfPageBitmapState>` lives inside `ReaderUiState.Success`, every bitmap update rebuilds the entire sealed class instance. Compose sees a new `uiState` value and recomposes `ReaderScreen`, which recomposes all children — including the top/bottom bars and progress slider — on every single page render. At typical window sizes of N=3 this triggers 6+ full-screen recompositions per page turn.
-
-**Solution:** `ReaderViewModel` exposes two independent `StateFlow` properties. `ReaderScreen` collects them separately so Compose can scope recomposition to only the Composable that actually changed.
-
-```
-ReaderViewModel
-│
-├── val uiState: StateFlow<ReaderUiState>
-│       Contains: book metadata, total page count, reading progress,
-│                 bookmarks, overlay visibility, annotation panel state.
-│       Changes on: navigation events, bookmark adds/removes,
-│                   reading status changes, overlay toggle.
-│
-└── val pageStates: StateFlow<Map<Int, PdfPageBitmapState>>
-        Contains: render state keyed by page index.
-        Changes on: every render cycle (potentially several times per second
-                    while scrolling).
-```
-
-**`ReaderUiState` shape (revised):**
+`observeCollectionCovers()` returns `Flow<List<CollectionCoverRow>>` — a projection of `(collection_id, cover_image_path)` for all non-trashed books with a non-null cover, ordered by `ref.added_at DESC`. The repository implementation groups by `collection_id` and calls `.take(4)` in Kotlin, avoiding `ROW_NUMBER()` window functions which require SQLite 3.25+ (Android 9+, minSdk is 23).
 
 ```kotlin
-sealed class ReaderUiState {
-    object Loading : ReaderUiState()
+data class CollectionCoverRow(
+    @ColumnInfo(name = "collection_id") val collectionId: Long,
+    @ColumnInfo(name = "cover_image_path") val coverImagePath: String
+)
+```
+
+**`ReadingProgressDao`**
+
+Uses `@Upsert` for all progress saves. `observeByBookId` returns `Flow<ReadingProgressEntity?>` — nullable because a book has no progress row until it is first opened.
+
+---
+
+### 3.3 Database Migrations
+
+**v2 → v3** — adds 10-star rating and personal review to `reading_progress`:
+
+```kotlin
+val MIGRATION_2_3 = object : Migration(2, 3) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE reading_progress ADD COLUMN rating INTEGER")
+        db.execSQL("ALTER TABLE reading_progress ADD COLUMN review TEXT")
+    }
+}
+```
+
+Both columns are nullable so existing rows require no backfill.
+
+---
+
+### 3.4 Entity-to-Domain Mapping
+
+Mapper functions live inside each `*RepositoryImpl`. Domain models never import Room annotations; entities never import domain models. This keeps the domain layer independently testable without any Android framework on the classpath.
+
+---
+
+## 4. UI & State Management
+
+### 4.1 ViewModel Conventions
+
+Every ViewModel exposes a single `uiState: StateFlow<T>`. Internal mutation uses `MutableStateFlow`; only `StateFlow` (or `.asStateFlow()`) is ever exposed to the screen. One-time events (navigation triggers, toasts) use `Channel<Event>` exposed via `.receiveAsFlow()`.
+
+All `StateFlow` properties are built with:
+```kotlin
+.stateIn(
+    scope = viewModelScope,
+    started = SharingStarted.WhileSubscribed(5_000),
+    initialValue = /* Loading | emptyList() | emptyMap() */
+)
+```
+
+The 5-second timeout keeps the upstream Room `Flow` alive through brief configuration changes without leaking it when the screen is off-screen longer.
+
+---
+
+### 4.2 SavedStateHandle Persistence
+
+UI state that must survive both configuration changes and process death is backed by `SavedStateHandle`.
+
+**`LibraryViewModel`** — per-tab view mode and sort mode
+
+Stored as flat string keys, one per `ReadingStatus` value plus one for the all-books tab:
+
+```
+"view_all"       → ViewMode name for the unfiltered tab
+"view_READING"   → ViewMode name for In Progress
+"view_TO_READ"   → ViewMode name for To Do
+"view_HAVE_READ" → ViewMode name for Completed
+"sort_all"       → SortMode name for the unfiltered tab
+"sort_READING"   → SortMode name for In Progress
+...
+```
+
+`restoreViewModes()` and `restoreSortModes()` iterate `ReadingStatus.entries` on construction, reading each key via `runCatching { Enum.valueOf(...) }.getOrNull()` so a missing or invalid key silently falls back to the default. `onViewModeChange` and `onSortModeChange` write to the handle before updating the in-memory `MutableStateFlow`, so the handle is always ahead.
+
+**`CollectionsViewModel`** — collection view mode
+
+Single key `"collections_view_mode"` storing the active `CollectionViewMode` name. Read on init, written on every `onViewModeChange` call.
+
+**`KronosNavGraph`** — active drawer status filter
+
+The `statusFilter: ReadingStatus?` composable state uses `rememberSaveable` with a custom `Saver<ReadingStatus?, String>` that serializes the enum by name and restores via `ReadingStatus.valueOf`:
+
+```kotlin
+var statusFilter by rememberSaveable(
+    stateSaver = Saver(
+        save = { it?.name ?: "" },
+        restore = { name -> if (name.isEmpty()) null else ReadingStatus.valueOf(name) }
+    )
+) { mutableStateOf<ReadingStatus?>(null) }
+```
+
+This survives rotation and the back-stack restoration triggered by drawer navigation.
+
+---
+
+### 4.3 Global Flow Safety (.catch)
+
+Every `StateFlow` backed by a use case or Room `Flow` has a `.catch` operator immediately before `stateIn`. A silent Room exception would otherwise terminate the upstream `Flow`, leaving the screen frozen on its initial value.
+
+**List/map flows:**
+```kotlin
+val books: StateFlow<List<Book>> = getBooks()
+    .catch { emit(emptyList()) }
+    .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+```
+
+**Sealed UiState flows:**
+```kotlin
+val uiState: StateFlow<LibraryUiState> = combine(...) { ... }
+    .catch { e -> emit(LibraryUiState.Error(e.message ?: "Unexpected error")) }
+    .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), LibraryUiState.Loading)
+```
+
+**Imperative collect (ProgressViewModel):**
+```kotlin
+combine(getNotes(bookId), getQuotes(bookId), getBookmarks(bookId))
+    { notes, quotes, bookmarks -> buildState(...) as ProgressUiState }
+    .catch { e -> emit(ProgressUiState.Error(e.message ?: "Unexpected error")) }
+    .collect { _uiState.value = it }
+```
+
+ViewModels with `.catch` coverage: `LibraryViewModel`, `CollectionsViewModel`, `CollectionDetailViewModel`, `AnnotationsViewModel`, `AnnotationDetailViewModel`, `QuotesViewModel`, `TrashViewModel`, `ProgressViewModel`.
+
+---
+
+### 4.4 UiState Modeling
+
+```kotlin
+sealed class LibraryUiState {
+    object Loading : LibraryUiState()
     data class Success(
-        val book: Book,
-        val totalPages: Int,
-        val currentPage: Int,
-        val readingProgress: ReadingProgress,
-        val bookmarks: List<Bookmark>,
-        val isOverlayVisible: Boolean
-    ) : ReaderUiState()
-    data class Error(val message: String) : ReaderUiState()
+        val books: List<Book>,
+        val viewMode: ViewMode,
+        val sortMode: SortMode
+    ) : LibraryUiState()
+    data class Error(val message: String) : LibraryUiState()
 }
 ```
 
-`pageStates` is no longer a field on `Success`.
+`Loading` is always `object`. `Success` carries a complete, pre-filtered UI data model so Composables do no computation. `Error` carries a message string, never a raw `Throwable`. Screen Composables use exhaustive `when`:
 
-**Consumption in `ReaderScreen`:**
-
-```
-ReaderScreen
-│
-├── val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-│       → drives ReaderTopBar, ReaderBottomBar, PageSlider, panels
-│
-└── val pageStates by viewModel.pageStates.collectAsStateWithLifecycle()
-        → passed only into PdfPageView(state = pageStates[currentPage])
-```
-
-Because `pageStates` is collected into a separate `State<Map<Int, PdfPageBitmapState>>`, only `PdfPageView` (and the `LazyPagerState` column it lives in) recomposes when a bitmap arrives. The top bar, bottom bar, and progress slider are stable across page renders.
-
-**Recomposition scope diagram:**
-
-```
-ReaderScreen
-├── ReaderTopBar          ← recomposes only on uiState changes
-├── PdfPager
-│   └── PdfPageView(pageStates[index])  ← recomposes on each bitmap update
-├── ReaderBottomBar       ← recomposes only on uiState changes
-└── PageSlider            ← recomposes only on currentPage changes
+```kotlin
+when (val state = uiState) {
+    is LibraryUiState.Loading -> LoadingIndicator()
+    is LibraryUiState.Success -> LibraryContent(state)
+    is LibraryUiState.Error   -> ErrorState(state.message)
+}
 ```
 
 ---
 
-### 4.3 Text Extraction — API 33 Fallback Strategy
+### 4.5 Star Rating UI
 
-**Primary target device:** Android 13 (API 33). The native `PdfRenderer.Page.textContent` API requires API 35 and cannot be used as the sole extraction path.
-
-**Two-tier extraction strategy in `TextExtractionSourceImpl`:**
-
-```
-fun extractPageText(bookId, pageNumber):
-    if (Build.VERSION.SDK_INT >= 35)
-        use PdfRenderer.Page.textContent        ← zero-dependency, fast
-    else
-        use PdfBoxAndroid (PDDocument)          ← Apache 2.0, local only
-```
-
-**Fallback library: PdfBox-Android** (`com.tom-roush:pdfbox-android`)
-
-PdfBox-Android is a port of Apache PDFBox to Android. It parses the PDF content stream directly to extract text and runs entirely on-device with no network access. It is licensed under Apache 2.0.
-
-Extraction via PdfBox-Android opens the PDF file independently from `PdfDocumentSession` — PdfBox does not use `PdfRenderer` and manages its own file handle. The `Mutex` in `PdfDocumentSession` governs `PdfRenderer` access only; PdfBox extraction is a separate I/O operation and does not compete for that lock.
-
-**`TextExtractionSource` interface** (in `domain.source`):
+`BookInfoScreen` renders a single row of 10 `Icon` composables for the rating selector. Filled stars (`Icons.Filled.Star`) are tinted `MaterialTheme.colorScheme.primary`; empty stars (`Icons.Outlined.StarBorder`) are tinted `onSurfaceVariant`. Tapping the currently selected star clears the rating (toggle-to-reset):
 
 ```kotlin
-interface TextExtractionSource {
-    suspend fun extractPageText(bookId: Long, pageNumber: Int): String
-    fun extractAllPages(bookId: Long): Flow<PageTextChunk>
-}
+onSelect = { n -> selectedRating = if (selectedRating == n) null else n }
 ```
 
-**`PageTextChunk` domain model:**
+`Arrangement.SpaceEvenly` distributes touch targets across the full row width.
 
-| Field | Type | Notes |
+---
+
+### 4.6 Spotify-Style Collection Covers
+
+When a collection has at least 4 books with cover images, `CollectionsScreen` renders a 2×2 `AsyncImage` grid instead of the name-text placeholder. Each `AsyncImage` uses `ContentScale.Crop` and `Modifier.weight(1f)` inside a `Column` of two `Row`s. The collection name always renders below the grid in a `Text` composable, matching the padding and typography of the placeholder. Collections with fewer than 4 covers fall back to the centered name text.
+
+Cover paths come from `GetCollectionCoversUseCase` → `CollectionRepositoryImpl` → `CollectionDao.observeCollectionCovers()`. The DAO returns all eligible cover paths ordered by recency; the repository groups by `collection_id` and calls `.take(4)`.
+
+---
+
+## 5. Navigation
+
+### 5.1 KronosNavGraph
+
+`KronosNavGraph` owns both the `NavController` and the `ModalNavigationDrawer`. It is called directly from `MainActivity`. The `NavHost` is wrapped in `Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background)` so the background is always painted, even if a child composable renders nothing.
+
+### 5.2 Route Definitions
+
+```
+LIBRARY                              — main library screen
+reader/{bookId}                      — PDF reader
+info/{bookId}                        — book detail / review sheet
+progress/{bookId}                    — reading progress + annotation density
+COLLECTIONS                          — collections grid/list
+collection/{collectionId}            — books inside one collection
+QUOTES                               — annotations hub (book list)
+annotations/{bookId}/{type}          — quotes or notes for one book
+TRASH                                — recently deleted books
+SETTINGS                             — app settings
+```
+
+### 5.3 ModalNavigationDrawer
+
+| Drawer item | Navigates to | `statusFilter` |
 |---|---|---|
-| `bookId` | Long | |
-| `pageNumber` | Int | |
-| `text` | String | |
-| `hash` | String | SHA-256 of `text`; matches `source_text_hash` in annotation entities |
+| Library (All) | `LIBRARY` | `null` |
+| In Progress | `LIBRARY` | `ReadingStatus.READING` |
+| To Do | `LIBRARY` | `ReadingStatus.TO_READ` |
+| Completed | `LIBRARY` | `ReadingStatus.HAVE_READ` |
+| Collections | `COLLECTIONS` | — |
+| Quotes & Notes | `QUOTES` | — |
+| Trash | `TRASH` | — |
 
-**Decoupling guarantee:** Nothing in `feature.reader` calls `TextExtractionSource` directly. Features use use cases. Future embedding logic will be a new use case in `domain.usecase` consuming `TextExtractionSource` — the render pipeline has zero knowledge of text extraction.
+### 5.4 Backstack Pattern
 
----
-
-### 4.4 Repository Interface Contract
-
-Interfaces live in `domain.repository`; implementations in `data.repository`. Feature packages never import implementations directly — Hilt provides them.
+Every drawer navigation call uses:
 
 ```kotlin
-interface BookRepository {
-    fun getAllBooks(): Flow<List<Book>>
-    fun getFavoriteBooks(): Flow<List<Book>>
-    fun getTrashedBooks(): Flow<List<Book>>
-    suspend fun getBookById(id: Long): Book?
-    suspend fun addBook(book: Book): Long
-    suspend fun updateBook(book: Book)
-    suspend fun moveToTrash(id: Long)
-    suspend fun restoreFromTrash(id: Long)
-    suspend fun permanentlyDelete(id: Long)
-    suspend fun toggleFavorite(id: Long)
+navController.navigate(route) {
+    popUpTo(navController.graph.findStartDestination().id) {
+        saveState = true
+    }
+    launchSingleTop = true
+    restoreState = true
 }
 ```
 
-`Flow`-returning functions map directly to Room DAO `@Query` methods — Room handles reactive emission. `suspend` functions wrap single-shot DAO operations. Entity-to-domain mappers live in `data.repository` alongside implementations; domain models never import Room annotations.
+`saveState = true` preserves the popped destination's scroll position and ViewModel state. `restoreState = true` restores it when revisited. Each drawer tab gets independent, persistent scroll and filter state without multiple ViewModel instances.
 
----
+### 5.5 Argument Validation
 
-### 4.5 ViewModel State Flow (general pattern)
-
-Every ViewModel exposes a single `uiState: StateFlow<T>` (plus `pageStates` in `ReaderViewModel` as described above). All data flows from repository `Flow` sources via `stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), initialValue)`. No `LiveData`. Internal mutations use `MutableStateFlow`; only `StateFlow` is exposed.
-
-One-time events (navigation, toasts) use `Channel<UiEvent>` exposed as `receiveAsFlow()`.
-
----
-
-### 4.6 Layered Flow (end-to-end example)
-
-```
-ReaderScreen (Composable)
-    │  collects uiState + pageStates
-    ▼
-ReaderViewModel
-    │  calls GetReadingProgressUseCase, drives PdfRenderWorker
-    ▼
-GetReadingProgressUseCase
-    │  calls ReadingProgressRepository.getProgressForBook(bookId)
-    ▼
-ReadingProgressRepositoryImpl
-    │  calls ReadingProgressDao.observeByBookId(bookId)
-    ▼
-Room (SQLite)  ──► Flow ──► propagates up to Composable
-```
-
-No layer skips another. Composables never call repositories. Use cases never import Room entities. DAOs never import domain models.
-
----
-
-## 5. Coding Standards
-
-### 5.1 Comment Policy
-
-**Banned — section separator comments:**
+Destinations requiring a `bookId` guard against invalid deep links:
 
 ```kotlin
-// ========================================
-// Public API
-// ========================================
+val bookId = backStackEntry.arguments?.getLong("bookId") ?: 0L
+if (bookId <= 0L) {
+    LaunchedEffect(Unit) { navController.popBackStack() }
+    return@composable
+}
 ```
 
-Use blank lines and logical grouping. `region` tags only in files exceeding 300 lines.
-
-**Banned — self-evident docstrings.** A function named `getBookById` does not need `/** Returns the book with the given id */`.
-
-**Banned — robotic inline comments:**
-
-```kotlin
-val book = Book(...)  // Create the book object
-return book           // Return the result
-```
-
-Acceptable comment uses: non-obvious algorithm, platform bug workaround, spec/requirement citation by name.
+Applied to `reader/{bookId}`, `info/{bookId}`, and `progress/{bookId}`.
 
 ---
 
-### 5.2 Function Design
+## 6. Module Layout & Directory Tree
 
-- One function, one responsibility. If you cannot describe a function in a single short phrase without "and", split it.
-- Recommended maximum: 40 lines. Longer functions require review justification.
-- No god objects. A class managing rendering, caching, progress, and annotation state simultaneously must be decomposed.
+```
+Kronos_v10/
+├── build.gradle.kts
+├── settings.gradle.kts
+├── gradle/
+│   └── libs.versions.toml
+└── app/src/main/java/com/kronos/
+    ├── KronosApp.kt
+    ├── MainActivity.kt
+    ├── navigation/
+    │   ├── KronosNavGraph.kt
+    │   └── NavRoutes.kt
+    ├── common/
+    │   ├── AppConstants.kt
+    │   ├── DateUtils.kt
+    │   ├── FileUtils.kt
+    │   ├── HashUtils.kt
+    │   ├── IoDispatcher.kt
+    │   └── KronosResult.kt
+    ├── data/
+    │   ├── database/
+    │   │   ├── KronosDatabase.kt
+    │   │   ├── DatabaseMigrations.kt
+    │   │   ├── converter/RoomTypeConverters.kt
+    │   │   ├── dao/
+    │   │   │   ├── BookDao.kt
+    │   │   │   ├── BookmarkDao.kt
+    │   │   │   ├── CollectionDao.kt
+    │   │   │   ├── NoteDao.kt
+    │   │   │   ├── QuoteDao.kt
+    │   │   │   ├── ReadingProgressDao.kt
+    │   │   │   └── SearchHistoryDao.kt
+    │   │   └── entity/
+    │   │       ├── BookAuthorCrossRef.kt
+    │   │       ├── BookCollectionCrossRef.kt
+    │   │       ├── BookEntity.kt
+    │   │       ├── BookmarkEntity.kt
+    │   │       ├── CollectionEntity.kt
+    │   │       ├── NoteEntity.kt
+    │   │       ├── QuoteEntity.kt
+    │   │       ├── ReadingProgressEntity.kt
+    │   │       └── SearchHistoryEntity.kt
+    │   ├── di/
+    │   │   ├── DatabaseModule.kt
+    │   │   ├── PdfModule.kt
+    │   │   └── RepositoryModule.kt
+    │   ├── pdf/
+    │   │   ├── PdfDocumentSession.kt
+    │   │   ├── PdfPageCache.kt
+    │   │   ├── PdfRenderWorker.kt
+    │   │   └── TextExtractionSourceImpl.kt
+    │   └── repository/
+    │       ├── BookRepositoryImpl.kt
+    │       ├── BookmarkRepositoryImpl.kt
+    │       ├── CollectionRepositoryImpl.kt
+    │       ├── NoteRepositoryImpl.kt
+    │       ├── QuoteRepositoryImpl.kt
+    │       ├── ReadingProgressRepositoryImpl.kt
+    │       └── SearchHistoryRepositoryImpl.kt
+    ├── domain/
+    │   ├── model/
+    │   │   ├── Book.kt
+    │   │   ├── Bookmark.kt
+    │   │   ├── BookAnnotationSummary.kt
+    │   │   ├── Collection.kt
+    │   │   ├── Note.kt
+    │   │   ├── PageTextChunk.kt
+    │   │   ├── PdfPageBitmapState.kt
+    │   │   ├── Quote.kt
+    │   │   ├── QuoteSummary.kt
+    │   │   ├── ReadingProgress.kt
+    │   │   ├── ReadingStatus.kt
+    │   │   ├── SortMode.kt
+    │   │   └── ViewMode.kt
+    │   ├── repository/
+    │   │   ├── BookRepository.kt
+    │   │   ├── BookmarkRepository.kt
+    │   │   ├── CollectionRepository.kt
+    │   │   ├── NoteRepository.kt
+    │   │   ├── QuoteRepository.kt
+    │   │   ├── ReadingProgressRepository.kt
+    │   │   └── SearchHistoryRepository.kt
+    │   ├── source/TextExtractionSource.kt
+    │   └── usecase/
+    │       ├── book/
+    │       ├── bookmark/
+    │       ├── collection/
+    │       ├── note/
+    │       ├── quote/
+    │       └── readingprogress/
+    ├── ui/
+    │   ├── component/
+    │   │   ├── BookCoverCard.kt
+    │   │   ├── ConfirmationDialog.kt
+    │   │   ├── EmptyState.kt
+    │   │   ├── ErrorState.kt
+    │   │   ├── KronosTopBar.kt
+    │   │   └── LoadingIndicator.kt
+    │   ├── theme/
+    │   │   ├── Color.kt
+    │   │   ├── Shape.kt
+    │   │   ├── Theme.kt
+    │   │   └── Typography.kt
+    │   └── util/ComposeExtensions.kt
+    └── feature/
+        ├── library/
+        │   ├── LibraryScreen.kt
+        │   ├── LibraryUiState.kt
+        │   ├── LibraryViewModel.kt
+        │   ├── collections/
+        │   │   ├── CollectionDetailScreen.kt
+        │   │   ├── CollectionDetailViewModel.kt
+        │   │   ├── CollectionsScreen.kt
+        │   │   └── CollectionsViewModel.kt
+        │   ├── component/
+        │   │   ├── BookGrid.kt
+        │   │   ├── BookListItem.kt
+        │   │   └── SortMenuSheet.kt
+        │   ├── info/
+        │   │   ├── BookInfoScreen.kt
+        │   │   └── BookInfoViewModel.kt
+        │   ├── quotes/
+        │   │   ├── AnnotationDetailScreen.kt
+        │   │   ├── AnnotationDetailViewModel.kt
+        │   │   ├── AnnotationsScreen.kt
+        │   │   ├── AnnotationsViewModel.kt
+        │   │   ├── QuotesScreen.kt
+        │   │   └── QuotesViewModel.kt
+        │   └── trash/
+        │       ├── TrashScreen.kt
+        │       └── TrashViewModel.kt
+        ├── reader/
+        │   ├── ReaderScreen.kt
+        │   ├── ReaderUiState.kt
+        │   ├── ReaderViewModel.kt
+        │   ├── component/
+        │   │   ├── PageSlider.kt
+        │   │   ├── PdfPageView.kt
+        │   │   ├── ReaderBottomBar.kt
+        │   │   ├── ReaderOverlay.kt
+        │   │   └── ReaderTopBar.kt
+        │   ├── panel/
+        │   │   ├── BookmarkPanel.kt
+        │   │   ├── NotePanel.kt
+        │   │   └── QuotePanel.kt
+        │   └── progress/
+        │       ├── ProgressDetailScreen.kt
+        │       ├── ProgressUiState.kt
+        │       └── ProgressViewModel.kt
+        └── settings/
+            ├── SettingsScreen.kt
+            ├── SettingsUiState.kt
+            └── SettingsViewModel.kt
+```
 
 ---
 
-### 5.3 Architecture Boundaries
+## 7. PDF Rendering
 
-| Concern | Owner |
+### 7.1 Sliding Window Cache
+
+`PdfRenderWorker` watches a `StateFlow<Int>` (current visible page). On each emission it evicts pages outside `[current - N .. current + N]` (default N = 3) from `PdfPageCache`, then renders uncached pages in priority order: `[current, current+1, current-1, current+2, current-2, ...]`.
+
+`PdfDocumentSession` owns the open `PdfRenderer` and its `ParcelFileDescriptor`. All page access routes through a `Mutex`-guarded `suspend fun renderPage(index, width, height): Bitmap`. `limitedParallelism(1)` on the IO dispatcher enforces serial `PdfRenderer` access without a dedicated thread.
+
+`PdfPageCache` is a `LinkedHashMap<Int, Bitmap>` with fixed capacity. Eviction calls `bitmap.recycle()`.
+
+`PdfPageBitmapState` (sealed, in `domain.model`): `Idle`, `Loading`, `Rendered(bitmap)`, `Error(cause)`.
+
+### 7.2 Decoupled ReaderViewModel Flows
+
+`ReaderViewModel` exposes two independent `StateFlow` properties so bitmap updates do not trigger full-screen recomposition:
+
+- `uiState: StateFlow<ReaderUiState>` — book metadata, page count, bookmarks, overlay state
+- `pageStates: StateFlow<Map<Int, PdfPageBitmapState>>` — render state keyed by page index
+
+`ReaderScreen` collects them into separate `State` objects. Only the `PdfPageView` subtree recomposes on bitmap updates; `ReaderTopBar`, `ReaderBottomBar`, and `PageSlider` are stable across render cycles.
+
+### 7.3 Text Extraction
+
+`TextExtractionSourceImpl` branches on API level:
+
+- **API 35+** — `PdfRenderer.Page.textContent` (framework, zero dependency)
+- **API 23–34** — PdfBox-Android (`com.tom-roush:pdfbox-android`), opens its own file handle via `PDDocument.load(file)`, independent of `PdfDocumentSession`'s mutex
+
+---
+
+## 8. Dependency Injection
+
+| Module | Provides |
 |---|---|
-| Business rules, state transitions | Use cases in `domain.usecase` |
-| Data access, entity mapping | Repositories in `data.repository` |
-| UI state translation | ViewModels in `feature.*` |
-| Rendering | Composables in `feature.*` |
+| `DatabaseModule` | `KronosDatabase` `@Singleton`, all DAOs |
+| `RepositoryModule` | All `*RepositoryImpl` bound to their interfaces `@Singleton` |
+| `PdfModule` | `PdfDocumentSession`, `PdfRenderWorker`, `TextExtractionSourceImpl` `@ViewModelScoped` |
 
-Composables contain no `if` logic representing business rules. Conditional rendering based on `UiState` variants is permitted.
+KSP handles annotation processing for both Hilt and Room. `kapt` is not used.
 
----
-
-### 5.4 Dependency Injection
-
-All dependencies provided by Hilt. Manual instantiation forbidden outside test fakes.
-
-Each logical grouping has a corresponding `@Module` in `data.di`: `DatabaseModule`, `RepositoryModule`, `PdfModule`.
-
-- `@Singleton`: DAOs, database, repositories, `PdfDocumentSession`
-- `@HiltViewModel`: ViewModels (implicit)
-- `@ViewModelScoped`: dependencies that must not outlive their ViewModel
+`@IoDispatcher` is a Hilt qualifier binding `Dispatchers.IO`, injected into ViewModels and repositories that perform blocking I/O. Tests swap in `UnconfinedTestDispatcher` without subclassing.
 
 ---
 
-### 5.5 Async and Threading
+## 9. Coding Standards
 
-- Coroutines + `Flow` only. No RxJava.
-- `Flow` for data streams; `suspend fun` for single-shot operations.
-- `withContext(Dispatchers.IO)` wraps all blocking I/O, including PdfBox-Android extraction.
-- `Dispatchers` are injected as `CoroutineDispatcher` constructor parameters for testability.
+**No AI fingerprints.** No section-separator comment blocks, no self-evident docstrings, no inline comments narrating what the code obviously does. Comments appear only for non-obvious constraints, platform quirks, or spec citations.
 
----
+**Composables** accept data and callbacks only — no ViewModel references in component Composables. Screen Composables (`*Screen`) receive a ViewModel via `hiltViewModel()` and navigation lambdas.
 
-### 5.6 UI State Modeling
+**`remember { mutableStateOf(...) }` only for ephemeral local UI state.** Any state that must survive navigation or configuration change belongs in the ViewModel backed by `SavedStateHandle`.
 
-```kotlin
-sealed class ExampleUiState {
-    object Loading : ExampleUiState()
-    data class Success(/* ... */) : ExampleUiState()
-    data class Error(val message: String) : ExampleUiState()
-}
-```
+**`LaunchedEffect` is for side-effects**, not a substitute for use cases or ViewModel logic.
 
-`Loading` is always `object`. `Success` carries a complete UI data model (not raw domain models). `Error` carries a user-facing message string or resource ID — never a raw `Throwable`.
+**No `MutableStateFlow` exposed to the UI.** Always `.asStateFlow()` or a read-only `StateFlow` property.
 
----
-
-### 5.7 Naming Conventions
-
-| Concept | Convention | Example |
-|---|---|---|
-| Room entity | `*Entity` | `BookEntity` |
-| Domain model | no suffix | `Book` |
-| Repository interface | `*Repository` | `BookRepository` |
-| Repository implementation | `*RepositoryImpl` | `BookRepositoryImpl` |
-| Use case | `*UseCase` | `ToggleFavoriteUseCase` |
-| ViewModel | `*ViewModel` | `ReaderViewModel` |
-| UI state sealed class | `*UiState` | `ReaderUiState` |
-| Hilt module | `*Module` | `DatabaseModule` |
-| Composable (screen) | `*Screen` | `ReaderScreen` |
-| Composable (component) | `PascalCase`, no suffix | `BookCoverCard` |
-| DAO | `*Dao` | `BookDao` |
-
----
-
-### 5.8 Compose-Specific Rules
-
-- Screen Composables (`*Screen`) accept a ViewModel via `hiltViewModel()` plus navigation lambdas. Nothing else.
-- Component Composables accept data and callbacks as parameters only — no ViewModel references.
-- `remember { mutableStateOf(...) }` only for purely local, ephemeral UI state (e.g., a dropdown flag). State surviving navigation belongs in the ViewModel.
-- `LaunchedEffect` is for side-effects triggered by state changes. It is not a substitute for use cases.
-- `ReaderScreen` must collect `uiState` and `pageStates` as separate `State` values, as described in section 4.2.
-
----
-
-## 6. Dependency Catalog Reference
-
-**`gradle/libs.versions.toml`**
-
-```toml
-[versions]
-kotlin            = "2.1.0"
-agp               = "8.9.2"
-compose-bom       = "2025.05.00"
-hilt              = "2.56.1"
-room              = "2.7.1"
-lifecycle         = "2.9.1"
-navigation        = "2.9.0"
-coroutines        = "1.10.2"
-coil              = "2.7.0"
-pdfbox            = "2.0.27.0"
-
-[libraries]
-androidx-compose-bom                 = { group = "androidx.compose", name = "compose-bom", version.ref = "compose-bom" }
-androidx-compose-ui                  = { group = "androidx.compose.ui", name = "ui" }
-androidx-compose-material3           = { group = "androidx.compose.material3", name = "material3" }
-androidx-compose-ui-tooling-preview  = { group = "androidx.compose.ui", name = "ui-tooling-preview" }
-androidx-lifecycle-viewmodel-compose = { group = "androidx.lifecycle", name = "lifecycle-viewmodel-compose", version.ref = "lifecycle" }
-androidx-lifecycle-runtime-compose   = { group = "androidx.lifecycle", name = "lifecycle-runtime-compose", version.ref = "lifecycle" }
-androidx-navigation-compose          = { group = "androidx.navigation", name = "navigation-compose", version.ref = "navigation" }
-hilt-android                         = { group = "com.google.dagger", name = "hilt-android", version.ref = "hilt" }
-hilt-compiler                        = { group = "com.google.dagger", name = "hilt-compiler", version.ref = "hilt" }
-hilt-navigation-compose              = { group = "androidx.hilt", name = "hilt-navigation-compose", version = "1.2.0" }
-room-runtime                         = { group = "androidx.room", name = "room-runtime", version.ref = "room" }
-room-ktx                             = { group = "androidx.room", name = "room-ktx", version.ref = "room" }
-room-compiler                        = { group = "androidx.room", name = "room-compiler", version.ref = "room" }
-kotlinx-coroutines-android           = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-android", version.ref = "coroutines" }
-kotlinx-coroutines-test              = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-test", version.ref = "coroutines" }
-coil-compose                         = { group = "io.coil-kt", name = "coil-compose", version.ref = "coil" }
-pdfbox-android                       = { group = "com.tom-roush", name = "pdfbox-android", version.ref = "pdfbox" }
-junit                                = { group = "junit", name = "junit", version = "4.13.2" }
-mockk                                = { group = "io.mockk", name = "mockk", version = "1.13.13" }
-turbine                              = { group = "app.cash.turbine", name = "turbine", version = "1.2.0" }
-
-[plugins]
-android-application = { id = "com.android.application", version.ref = "agp" }
-kotlin-android      = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
-kotlin-compose      = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
-hilt                = { id = "com.google.dagger.hilt.android", version.ref = "hilt" }
-ksp                 = { id = "com.google.devtools.ksp", version = "2.1.0-1.0.29" }
-room                = { id = "androidx.room", version.ref = "room" }
-```
-
-**Implementation notes:**
-
-- KSP replaces kapt for both Room and Hilt. Do not use `annotationProcessor` or `kapt`.
-- `PdfRenderer` is part of the Android framework — no additional dependency. Available from API 21.
-- `pdfbox-android` is used only in `TextExtractionSourceImpl` behind the `Build.VERSION.SDK_INT < 35` branch. It opens its own file handle via `PDDocument.load(file)` and is independent of `PdfDocumentSession`.
-- `PdfRenderer.Page.textContent` (text-layer extraction without rendering) requires API 35. The `if/else` branch in `TextExtractionSourceImpl` is the only place this check appears.
-- `RoomTypeConverters.kt` handles `ReadingStatus` enum → `TEXT` storage. Add converters for any future collection-typed columns there.
-- `series_position` is `REAL` to support inserting a book between positions without renumbering the sequence.
-- `notes.page_number` nullable: `NULL` means a book-level note. The DAO query for book-level notes is `WHERE book_id = ? AND page_number IS NULL`.
+**No layer skipping.** Composables never call repositories. Use cases never import Room entities. DAOs never import domain models.

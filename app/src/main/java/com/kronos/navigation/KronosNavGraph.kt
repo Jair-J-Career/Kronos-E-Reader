@@ -31,6 +31,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.NavigationDrawerItem
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
@@ -40,6 +41,8 @@ import androidx.compose.runtime.mutableStateOf
 import kotlinx.coroutines.flow.MutableSharedFlow
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.Saver
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -72,7 +75,12 @@ fun KronosNavGraph(navController: NavHostController = rememberNavController()) {
     val scope = rememberCoroutineScope()
     val currentEntry by navController.currentBackStackEntryAsState()
     val currentRoute = currentEntry?.destination?.route
-    var statusFilter by remember { mutableStateOf<ReadingStatus?>(null) }
+    var statusFilter by rememberSaveable(
+        stateSaver = Saver(
+            save = { it?.name ?: "" },
+            restore = { name -> if (name.isEmpty()) null else ReadingStatus.valueOf(name) }
+        )
+    ) { mutableStateOf<ReadingStatus?>(null) }
     val filePickerRequests = remember { MutableSharedFlow<Unit>(extraBufferCapacity = 1) }
 
     ModalNavigationDrawer(
@@ -131,12 +139,14 @@ fun KronosNavGraph(navController: NavHostController = rememberNavController()) {
             )
         }
     ) {
+        Surface(
+            modifier = Modifier.fillMaxSize(),
+            color = MaterialTheme.colorScheme.background
+        ) {
         NavHost(
             navController = navController,
             startDestination = NavRoutes.LIBRARY,
-            modifier = Modifier
-                .fillMaxSize()
-                .background(MaterialTheme.colorScheme.background)
+            modifier = Modifier.fillMaxSize()
         ) {
             composable(NavRoutes.LIBRARY) {
                 LibraryScreen(
@@ -236,6 +246,7 @@ fun KronosNavGraph(navController: NavHostController = rememberNavController()) {
                 }
                 ProgressDetailScreen(onNavigateBack = { navController.popBackStack() })
             }
+        }
         }
     }
 }
